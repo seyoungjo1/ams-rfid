@@ -20,9 +20,10 @@
 
 ## APK 받기
 
-1. GitHub의 **Actions** 탭 → 최근 `Build APK` 실행 → 하단 **Artifacts**에서
-   `ams-rfid-apk`(release/debug APK) 다운로드.
-2. 또는 `v1.0.0` 처럼 `v*` 태그를 푸시하면 **Releases**에 APK가 자동 첨부됩니다.
+1. GitHub의 **Releases**에서 `ams-rfid-release.apk` 다운로드.
+   빌드가 성공하면 `app/build.gradle.kts`의 `versionName`(예: `v1.0.0`)으로 릴리스가 자동 생성됩니다.
+   같은 버전 태그가 이미 있으면 건너뛰므로, 새 릴리스를 내려면 `versionName`/`versionCode`를 올리세요.
+2. 또는 **Actions** 탭 → 최근 `Build APK` 실행 → 하단 **Artifacts**의 `ams-rfid-apk`.
 
 APK를 폰에 복사해 설치하세요(출처를 알 수 없는 앱 설치 허용 필요).
 
