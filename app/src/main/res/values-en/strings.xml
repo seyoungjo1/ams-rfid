@@ -1,0 +1,54 @@
+<resources>
+    <string name="app_name">Filament Tag Tool</string>
+
+    <string name="tab_library">Library</string>
+    <string name="tab_read">Read Tag</string>
+    <string name="tab_help">Help</string>
+    <string name="search_hint">Search material / color (e.g. PLA Matte Black)</string>
+    <string name="cancel">Cancel</string>
+    <string name="close">Close</string>
+    <string name="back">Back</string>
+
+    <string name="library_count">%1$d colors</string>
+    <string name="library_empty">No results</string>
+    <string name="samples_count">%1$d samples</string>
+
+    <string name="detail_write_button">Write this filament to a card</string>
+    <string name="detail_uid">UID: %1$s</string>
+    <string name="detail_type">Material: %1$s</string>
+    <string name="detail_weight">Weight: %1$dg</string>
+    <string name="detail_diameter">Diameter: %1$.2fmm</string>
+    <string name="detail_hotend">Hotend: %1$d–%2$d℃</string>
+    <string name="detail_bed">Bed: %1$d℃</string>
+    <string name="detail_drying">Drying: %1$d℃ / %2$dh</string>
+    <string name="detail_color">Color</string>
+    <string name="detail_production">Made: %1$s</string>
+
+    <string name="nfc_prompt_write">Hold a blank CUID (gen2 magic) card to the phone\'s NFC area</string>
+    <string name="nfc_prompt_read">Hold a filament tag to the phone\'s NFC area</string>
+    <string name="nfc_working">Writing… keep the card steady (%1$d/%2$d sectors)</string>
+    <string name="nfc_verifying">Verifying… keep the card steady</string>
+    <string name="nfc_reading">Reading… keep the card steady</string>
+    <string name="nfc_write_success">Done! Put the card in your AMS to confirm.</string>
+    <string name="nfc_write_failed">Write failed: %1$s</string>
+    <string name="nfc_verify_failed">Verify failed: %1$s</string>
+    <string name="nfc_not_mifare">This card is not MIFARE Classic.</string>
+    <string name="nfc_tag_lost">Lost the card. Please tap again.</string>
+    <string name="nfc_disabled">NFC is off. Enable it in settings.</string>
+    <string name="nfc_unsupported">This device has no NFC.</string>
+    <string name="nfc_read_failed">Read failed: %1$s</string>
+
+    <string name="read_intro">Tap an existing filament tag to read its contents.</string>
+    <string name="read_start">Start reading</string>
+    <string name="read_not_bambu">Not a Bambu tag, or keys do not match.</string>
+
+    <string name="cuid_check">Check CUID card</string>
+    <string name="cuid_writable">OK: block 0 is rewritable (CUID card).</string>
+    <string name="cuid_not_writable">Not usable: block 0 cannot be rewritten.</string>
+    <string name="cuid_needs_format">FF auth failed: format the card first.</string>
+
+    <string name="help_title">How to use</string>
+    <string name="help_body">1. You need an Android phone with NFC and MIFARE Classic read/write.\n2. Get a "MIFARE Classic 1K CUID (gen2 magic)" card.\n3. Pick a material/color in the library, tap "Write to card", and hold a blank CUID card to the back of your phone.\n4. When done, stick the card on your spool and load it into the AMS.\n\nNote: recent AMS firmware may detect some CUID (gen2) tags and brick them by writing bad data to block 0. Gen4/FUID tags are the most reliable. Use this tool only for interoperability/backup with filament and hardware you own.</string>
+    <string name="help_disclaimer">Data: queengooborg/Bambu-Lab-RFID-Library. Unofficial community tool.</string>
+    <string name="help_source">Data commit: %1$s</string>
+</resources>

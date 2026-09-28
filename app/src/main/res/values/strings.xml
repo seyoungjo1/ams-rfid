@@ -1,0 +1,61 @@
+<resources>
+    <string name="app_name">필라멘트 태그 도구</string>
+
+    <!-- 공통 -->
+    <string name="tab_library">라이브러리</string>
+    <string name="tab_read">태그 읽기</string>
+    <string name="tab_help">도움말</string>
+    <string name="search_hint">재질·색상 검색 (예: PLA Matte 검정)</string>
+    <string name="cancel">취소</string>
+    <string name="close">닫기</string>
+    <string name="back">뒤로</string>
+
+    <!-- 라이브러리 -->
+    <string name="library_count">%1$d개 색상</string>
+    <string name="library_empty">검색 결과가 없습니다</string>
+    <string name="samples_count">샘플 %1$d개</string>
+
+    <!-- 상세/쓰기 -->
+    <string name="detail_write_button">이 필라멘트로 카드에 쓰기</string>
+    <string name="detail_uid">UID: %1$s</string>
+    <string name="detail_type">재질: %1$s</string>
+    <string name="detail_weight">무게: %1$dg</string>
+    <string name="detail_diameter">직경: %1$.2fmm</string>
+    <string name="detail_hotend">노즐 온도: %1$d–%2$d℃</string>
+    <string name="detail_bed">베드 온도: %1$d℃</string>
+    <string name="detail_drying">건조: %1$d℃ / %2$d시간</string>
+    <string name="detail_color">색상</string>
+    <string name="detail_production">생산일: %1$s</string>
+
+    <!-- NFC 진행 상태 -->
+    <string name="nfc_prompt_write">빈 CUID(2세대 공칩) 카드를 폰 뒷면 NFC 위치에 대주세요</string>
+    <string name="nfc_prompt_read">필라멘트 태그를 폰 뒷면 NFC 위치에 대주세요</string>
+    <string name="nfc_working">쓰는 중… 카드를 떼지 마세요 (%1$d/%2$d 섹터)</string>
+    <string name="nfc_verifying">검증 중… 카드를 떼지 마세요</string>
+    <string name="nfc_reading">읽는 중… 카드를 떼지 마세요</string>
+    <string name="nfc_write_success">쓰기 완료! 카드를 AMS에 넣어 확인하세요.</string>
+    <string name="nfc_write_failed">쓰기 실패: %1$s</string>
+    <string name="nfc_verify_failed">검증 실패: %1$s</string>
+    <string name="nfc_not_mifare">이 카드는 MIFARE Classic 이 아닙니다.</string>
+    <string name="nfc_tag_lost">카드를 놓쳤습니다. 다시 대주세요.</string>
+    <string name="nfc_disabled">NFC 가 꺼져 있습니다. 설정에서 켜주세요.</string>
+    <string name="nfc_unsupported">이 기기는 NFC 를 지원하지 않습니다.</string>
+    <string name="nfc_read_failed">읽기 실패: %1$s</string>
+
+    <!-- 읽기 화면 -->
+    <string name="read_intro">기존 필라멘트 태그를 대면 내용을 읽어 보여줍니다.</string>
+    <string name="read_start">태그 읽기 시작</string>
+    <string name="read_not_bambu">Bambu 태그가 아니거나 키가 맞지 않습니다.</string>
+
+    <!-- 카드 점검 -->
+    <string name="cuid_check">CUID 카드 점검</string>
+    <string name="cuid_writable">사용 가능: 블록 0 재기록 가능한 CUID 카드입니다.</string>
+    <string name="cuid_not_writable">사용 불가: 블록 0 을 다시 쓸 수 없는 일반 카드입니다.</string>
+    <string name="cuid_needs_format">FF 키 인증 실패: 먼저 카드를 포맷/초기화해야 합니다.</string>
+
+    <!-- 도움말 -->
+    <string name="help_title">사용 방법</string>
+    <string name="help_body">1. NFC 와 MIFARE Classic 읽기/쓰기를 지원하는 안드로이드 폰이 필요합니다.\n2. 시중의 \"MIFARE Classic 1K CUID (2세대 매직/공칩)\" 카드를 준비하세요.\n3. 라이브러리에서 원하는 재질·색상을 고른 뒤 \"카드에 쓰기\"를 누르고, 빈 CUID 카드를 폰 뒷면에 대주세요.\n4. 완료되면 카드를 스풀에 붙이고 AMS 에 넣습니다.\n\n주의: 최신 AMS 펌웨어는 일부 CUID(2세대) 태그를 감지해 블록 0 에 잘못된 값을 써서 못 쓰게 만들 수 있습니다. 가장 확실한 것은 Gen4/FUID 태그입니다. 이 도구는 본인이 보유한 필라멘트/장비에서의 상호운용·백업 용도로만 사용하세요.</string>
+    <string name="help_disclaimer">데이터 출처: queengooborg/Bambu-Lab-RFID-Library (CC/GPL). 이 앱은 비공식 커뮤니티 도구입니다.</string>
+    <string name="help_source">데이터 커밋: %1$s</string>
+</resources>

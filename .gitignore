@@ -1,0 +1,20 @@
+# Gradle / Android
+.gradle/
+build/
+app/build/
+local.properties
+*.iml
+.idea/
+captures/
+.cxx/
+
+# OS
+.DS_Store
+
+# Keystores (CI generates an ephemeral one)
+*.jks
+*.keystore
+
+# Python
+__pycache__/
+*.pyc
