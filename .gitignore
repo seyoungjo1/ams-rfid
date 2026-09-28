@@ -11,6 +11,9 @@ captures/
 # OS
 .DS_Store
 
+# 로컬로 받은 APK
+dist/
+
 # Keystores (CI generates an ephemeral one)
 *.jks
 *.keystore
