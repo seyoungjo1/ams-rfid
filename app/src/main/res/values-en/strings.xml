@@ -51,5 +51,27 @@
     <string name="help_title">How to use</string>
     <string name="help_body">1. You need an Android phone with NFC and MIFARE Classic read/write.\n2. Get a MIFARE Classic 1K card/sticker labeled CUID (gen2) or FUID. Chips labeled \"UID\" (gen1a) cannot have their UID changed from a phone and are rejected by the AMS.\n3. Pick a material/color in the library, tap \"Write to card\", and hold a blank CUID card to the back of your phone.\n4. When done, stick the card on your spool and load it into the AMS.\n\nNote: recent AMS firmware may detect some CUID (gen2) tags and brick them by writing bad data to block 0. Gen4/FUID tags are the most reliable. Use this tool only for interoperability/backup with filament and hardware you own.</string>
     <string name="help_disclaimer">Data: queengooborg/Bambu-Lab-RFID-Library. Unofficial community tool.</string>
-    <string name="help_source">Data commit: %1$s</string>
+
+    <!-- Filament DB update -->
+    <string name="db_title">Filament DB</string>
+    <string name="db_summary">%1$d colors · %2$d samples</string>
+    <string name="db_version">Base: %1$s (%2$s)</string>
+    <string name="db_source_bundled">Source: built-in DB</string>
+    <string name="db_source_downloaded">Source: downloaded DB</string>
+    <string name="db_check">Check for DB update</string>
+    <string name="db_checking">Checking…</string>
+    <string name="db_update_title">Filament DB update</string>
+    <string name="db_update_body">A new filament DB is available.\n\nCurrent: %1$d colors (%2$s)\nNew: %3$d colors (%4$s)\n%5$s\n\nUpdate to this DB now?</string>
+    <string name="db_update_added">Added: %1$s</string>
+    <string name="db_update_added_more">Added: %1$s and %2$d more</string>
+    <string name="db_update_removed">Removed: %1$d</string>
+    <string name="db_update_data_only">Same colors; only tag data changed.</string>
+    <string name="db_update_now">Update</string>
+    <string name="db_update_later">Later</string>
+    <string name="db_downloading">Downloading the new DB…</string>
+    <string name="db_up_to_date">You already have the latest DB.</string>
+    <string name="db_update_done">Updated: %1$d colors</string>
+    <string name="db_check_failed">Update check failed: %1$s</string>
+    <string name="db_update_failed">Update failed: %1$s</string>
+    <string name="ok">OK</string>
 </resources>

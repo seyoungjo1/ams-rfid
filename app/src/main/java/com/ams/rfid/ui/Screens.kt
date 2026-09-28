@@ -3,6 +3,7 @@ package com.ams.rfid.ui
 import androidx.compose.foundation.background
 import androidx.compose.foundation.border
 import androidx.compose.foundation.clickable
+import androidx.compose.foundation.verticalScroll
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
@@ -17,12 +18,13 @@ import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
+import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.shape.CircleShape
-import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.Info
 import androidx.compose.material.icons.filled.List
 import androidx.compose.material.icons.filled.Search
+import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.Button
 import androidx.compose.material3.Card
 import androidx.compose.material3.CircularProgressIndicator
@@ -38,6 +40,7 @@ import androidx.compose.material3.OutlinedButton
 import androidx.compose.material3.OutlinedTextField
 import androidx.compose.material3.Scaffold
 import androidx.compose.material3.Text
+import androidx.compose.material3.TextButton
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.getValue
 import androidx.compose.ui.Alignment
@@ -50,8 +53,11 @@ import androidx.compose.ui.unit.dp
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import com.ams.rfid.R
 import com.ams.rfid.core.FilamentInfo
+import com.ams.rfid.core.LibraryUpdate
 import com.ams.rfid.data.EntryInfo
 import com.ams.rfid.data.FilamentEntry
+import com.ams.rfid.data.FilamentLibrary
+import com.ams.rfid.data.LibrarySource
 
 private fun parseColor(hex: String?): Color {
     if (hex == null) return Color.Gray
@@ -94,12 +100,13 @@ fun AppRoot(vm: MainViewModel) {
             when (ui.tab) {
                 Tab.LIBRARY -> LibraryScreen(ui, vm)
                 Tab.READ -> ReadScreen(vm)
-                Tab.HELP -> HelpScreen(ui)
+                Tab.HELP -> HelpScreen(ui, vm)
             }
         }
     }
     ui.selected?.let { DetailSheet(it, vm) }
     if (ui.showSheet) OperationSheet(ui, vm)
+    UpdateDialog(ui, vm)
 }
 
 @Composable
@@ -248,12 +255,15 @@ private fun ReadScreen(vm: MainViewModel) {
 }
 
 @Composable
-private fun HelpScreen(ui: UiState) {
+private fun HelpScreen(ui: UiState, vm: MainViewModel) {
     Column(
         Modifier
             .fillMaxSize()
+            .verticalScroll(rememberScrollState())
             .padding(20.dp),
     ) {
+        (ui.library as? LibraryState.Ready)?.library?.let { DbCard(it, ui.update, vm) }
+        Spacer(Modifier.height(20.dp))
         Text(stringResource(R.string.help_title), style = MaterialTheme.typography.titleLarge)
         Spacer(Modifier.height(12.dp))
         Text(stringResource(R.string.help_body), style = MaterialTheme.typography.bodyMedium)
@@ -265,15 +275,112 @@ private fun HelpScreen(ui: UiState) {
             style = MaterialTheme.typography.bodySmall,
             color = MaterialTheme.colorScheme.outline,
         )
-        (ui.library as? LibraryState.Ready)?.library?.commit?.takeIf { it.isNotEmpty() }?.let {
+    }
+}
+
+/** 현재 필라멘트 DB 정보와 수동 업데이트 확인 버튼. */
+@Composable
+private fun DbCard(library: FilamentLibrary, update: UpdateState, vm: MainViewModel) {
+    Card(Modifier.fillMaxWidth()) {
+        Column(Modifier.padding(16.dp)) {
+            Text(stringResource(R.string.db_title), style = MaterialTheme.typography.titleMedium)
             Spacer(Modifier.height(8.dp))
-            Text(
-                stringResource(R.string.help_source, it.take(10)),
-                style = MaterialTheme.typography.labelSmall,
-                color = MaterialTheme.colorScheme.outline,
+            InfoLine(stringResource(R.string.db_summary, library.entries.size, library.sampleCount))
+            InfoLine(stringResource(R.string.db_version, library.commit.take(7), library.generated.take(10)))
+            InfoLine(
+                stringResource(
+                    if (library.source == LibrarySource.DOWNLOADED) R.string.db_source_downloaded
+                    else R.string.db_source_bundled,
+                ),
             )
+            Spacer(Modifier.height(12.dp))
+            val busy = update is UpdateState.Checking || update is UpdateState.Downloading
+            OutlinedButton(
+                onClick = { vm.checkForUpdate(manual = true) },
+                enabled = !busy,
+                modifier = Modifier.fillMaxWidth(),
+            ) {
+                if (busy) {
+                    CircularProgressIndicator(Modifier.size(16.dp), strokeWidth = 2.dp)
+                    Spacer(Modifier.width(8.dp))
+                    Text(stringResource(R.string.db_checking))
+                } else {
+                    Text(stringResource(R.string.db_check))
+                }
+            }
         }
     }
+}
+
+/** 새 DB가 있을 때 업데이트할지 묻고, 진행/결과를 보여주는 다이얼로그. */
+@Composable
+private fun UpdateDialog(ui: UiState, vm: MainViewModel) {
+    when (val u = ui.update) {
+        is UpdateState.Available -> {
+            val current = (ui.library as? LibraryState.Ready)?.library ?: return
+            AlertDialog(
+                onDismissRequest = { vm.postponeUpdate() },
+                title = { Text(stringResource(R.string.db_update_title)) },
+                text = {
+                    Text(
+                        stringResource(
+                            R.string.db_update_body,
+                            current.entries.size,
+                            current.generated.take(10),
+                            u.manifest.colors,
+                            u.manifest.generated.take(10),
+                            changesText(u.diff),
+                        ),
+                    )
+                },
+                confirmButton = {
+                    TextButton(onClick = { vm.applyUpdate() }) { Text(stringResource(R.string.db_update_now)) }
+                },
+                dismissButton = {
+                    TextButton(onClick = { vm.postponeUpdate() }) { Text(stringResource(R.string.db_update_later)) }
+                },
+            )
+        }
+        is UpdateState.Downloading -> AlertDialog(
+            onDismissRequest = {},
+            title = { Text(stringResource(R.string.db_update_title)) },
+            text = {
+                Row(verticalAlignment = Alignment.CenterVertically) {
+                    CircularProgressIndicator(Modifier.size(24.dp))
+                    Spacer(Modifier.width(16.dp))
+                    Text(stringResource(R.string.db_downloading))
+                }
+            },
+            confirmButton = {},
+        )
+        is UpdateState.Message -> AlertDialog(
+            onDismissRequest = { vm.dismissUpdateMessage() },
+            text = { Text(u.text) },
+            confirmButton = {
+                TextButton(onClick = { vm.dismissUpdateMessage() }) { Text(stringResource(R.string.ok)) }
+            },
+        )
+        UpdateState.Idle, UpdateState.Checking -> {}
+    }
+}
+
+/** 추가/삭제된 색상 요약 문구. */
+@Composable
+private fun changesText(diff: LibraryUpdate.Diff): String {
+    val lines = mutableListOf<String>()
+    if (diff.added.isNotEmpty()) {
+        val names = diff.added.take(3).joinToString(", ") { LibraryUpdate.displayName(it) }
+        lines += if (diff.added.size > 3) {
+            stringResource(R.string.db_update_added_more, names, diff.added.size - 3)
+        } else {
+            stringResource(R.string.db_update_added, names)
+        }
+    }
+    if (diff.removed.isNotEmpty()) {
+        lines += stringResource(R.string.db_update_removed, diff.removed.size)
+    }
+    if (lines.isEmpty()) lines += stringResource(R.string.db_update_data_only)
+    return lines.joinToString("\n")
 }
 
 @OptIn(ExperimentalMaterial3Api::class)

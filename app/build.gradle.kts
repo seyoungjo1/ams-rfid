@@ -11,10 +11,13 @@ android {
         applicationId = "com.ams.rfid"
         minSdk = 26
         targetSdk = 34
-        versionCode = 2
-        versionName = "1.0.1"
+        versionCode = 3
+        versionName = "1.1.0"
         testInstrumentationRunner = "androidx.test.runner.AndroidJUnitRunner"
         vectorDrawables { useSupportLibrary = true }
+        // 필라멘트 DB 릴리스('library-db')를 내려받을 저장소. CI에서는 현재 저장소를 쓴다.
+        val libraryRepo = System.getenv("GITHUB_REPOSITORY") ?: "seyoungjo1/ams-rfid"
+        buildConfigField("String", "LIBRARY_REPO", "\"$libraryRepo\"")
     }
 
     // 환경변수로 키스토어가 주어졌을 때만 릴리스 서명을 구성한다.
@@ -54,6 +57,7 @@ android {
     }
     buildFeatures {
         compose = true
+        buildConfig = true
     }
     composeOptions {
         kotlinCompilerExtensionVersion = libs.versions.composeCompiler.get()

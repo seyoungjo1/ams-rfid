@@ -1,6 +1,5 @@
 package com.ams.rfid.data
 
-import android.content.Context
 import android.util.Base64
 import com.ams.rfid.core.TagDump
 import org.json.JSONObject
@@ -39,12 +38,23 @@ data class FilamentEntry(
 ) {
     val displayName: String get() = "$material · $color"
     val searchKey: String = "$category $material $color".lowercase()
+
+    /** DB 비교용 키 ("분류/재질/색상"). manifest.json 의 keys 와 같은 형식. */
+    val key: String get() = "$category/$material/$color"
 }
+
+/** DB를 어디서 읽었는지. */
+enum class LibrarySource { BUNDLED, DOWNLOADED }
 
 data class FilamentLibrary(
     val commit: String,
+    val generated: String,
+    val source: LibrarySource,
     val entries: List<FilamentEntry>,
 ) {
+    val sampleCount: Int get() = entries.sumOf { it.samples.size }
+    val keys: List<String> get() = entries.map { it.key }
+
     fun search(query: String): List<FilamentEntry> {
         val q = query.trim().lowercase()
         if (q.isEmpty()) return entries
@@ -53,11 +63,11 @@ data class FilamentLibrary(
     }
 
     companion object {
-        /** assets/library/index.json 을 읽어 파싱한다. */
-        fun load(context: Context): FilamentLibrary {
-            val text = context.assets.open("library/index.json").bufferedReader().use { it.readText() }
+        /** index.json 내용을 파싱한다. */
+        fun parse(text: String, source: LibrarySource): FilamentLibrary {
             val root = JSONObject(text)
             val commit = root.optString("commit", "")
+            val generated = root.optString("generated", "")
             val arr = root.getJSONArray("entries")
             val entries = ArrayList<FilamentEntry>(arr.length())
             for (i in 0 until arr.length()) {
@@ -91,7 +101,7 @@ data class FilamentLibrary(
                     ),
                 )
             }
-            return FilamentLibrary(commit, entries)
+            return FilamentLibrary(commit, generated, source, entries)
         }
     }
 }

@@ -1,0 +1,81 @@
+name: Update filament DB
+
+# 원본 라이브러리(queengooborg/Bambu-Lab-RFID-Library)의 변경을 매일 확인해,
+# 바뀌었으면 앱용 DB(index.json)와 요약(manifest.json)을 'library-db' 릴리스에 올린다.
+# 앱은 manifest.json 을 보고 새 DB가 있으면 사용자에게 업데이트할지 묻는다.
+# (schedule/workflow_dispatch 는 기본 브랜치(main)에 이 파일이 있어야 동작한다.)
+
+on:
+  schedule:
+    - cron: "17 3 * * *"
+  workflow_dispatch:
+    inputs:
+      force:
+        description: "원본 변경이 없어도 다시 게시"
+        type: boolean
+        default: false
+  push:
+    paths:
+      - scripts/build_tag_library.py
+      - .github/workflows/library.yml
+
+permissions:
+  contents: write
+
+concurrency:
+  group: library-db
+  cancel-in-progress: false
+
+env:
+  UPSTREAM: https://github.com/queengooborg/Bambu-Lab-RFID-Library.git
+
+jobs:
+  update:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+
+      # 게시된 DB의 기준 커밋과 원본 최신 커밋을 비교한다.
+      # 스크립트가 바뀐 push 나 강제 실행이면 형식이 달라졌을 수 있으니 항상 다시 만든다.
+      - name: Check upstream
+        id: check
+        run: |
+          UPSTREAM_HEAD=$(git ls-remote "$UPSTREAM" HEAD | cut -f1)
+          PUBLISHED=$(curl -sfL "https://github.com/${{ github.repository }}/releases/download/library-db/manifest.json" \
+            | python3 -c "import json,sys; print(json.load(sys.stdin).get('commit',''))" || true)
+          echo "upstream=$UPSTREAM_HEAD published=${PUBLISHED:-none}"
+          if [ "$UPSTREAM_HEAD" != "$PUBLISHED" ] || [ "${{ github.event_name }}" = "push" ] || [ "${{ inputs.force }}" = "true" ]; then
+            echo "changed=true" >> "$GITHUB_OUTPUT"
+          else
+            echo "원본 변경 없음. 게시를 건너뜁니다."
+            echo "changed=false" >> "$GITHUB_OUTPUT"
+          fi
+
+      - name: Build DB
+        if: steps.check.outputs.changed == 'true'
+        run: |
+          git clone --depth 1 "$UPSTREAM" /tmp/lib
+          python3 scripts/build_tag_library.py /tmp/lib out/index.json --samples 6 --manifest out/manifest.json
+          ls -la out
+
+      - name: Publish DB release
+        if: steps.check.outputs.changed == 'true'
+        uses: softprops/action-gh-release@v2
+        with:
+          tag_name: library-db
+          target_commitish: ${{ github.sha }}
+          name: 필라멘트 DB (자동 갱신)
+          body: |
+            앱의 "DB 업데이트"가 내려받는 필라멘트 데이터입니다.
+            매일 queengooborg/Bambu-Lab-RFID-Library 변경을 확인해 자동으로 갱신됩니다.
+          prerelease: true
+          make_latest: false
+          files: |
+            out/index.json
+            out/manifest.json

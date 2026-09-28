@@ -68,11 +68,12 @@ APK를 폰에 복사해 설치하세요(출처를 알 수 없는 앱 설치 허�
 app/src/main/java/com/ams/rfid/
   core/    UID 키 유도·덤프 파싱·필라멘트 정보·클론 로직 (순수 Kotlin, 단위 테스트 대상)
   nfc/     android.nfc.MifareClassic → MifareCard 어댑터
-  data/    assets/library/index.json 로더
+  data/    DB 로더·업데이트(내장/내려받은 DB 선택, manifest 확인, 다운로드)
   ui/      Compose UI, NFC 리더 모드 액티비티
 app/src/main/assets/library/index.json   빌드된 필라멘트 라이브러리
 scripts/build_tag_library.py             라이브러리 덤프 → index.json 변환기
 .github/workflows/build.yml              APK 빌드/릴리스 워크플로
+.github/workflows/library.yml            필라멘트 DB 매일 갱신 워크플로
 ```
 
 ## 로컬 빌드
@@ -82,11 +83,26 @@ scripts/build_tag_library.py             라이브러리 덤프 → index.json �
 ./gradlew assembleDebug       # 설치 가능한 debug APK
 ```
 
-## 라이브러리 갱신
+## 필라멘트 DB 자동 갱신
+
+원본 [Bambu-Lab-RFID-Library](https://github.com/queengooborg/Bambu-Lab-RFID-Library)는 계속 태그가 추가됩니다.
+앱은 APK를 다시 설치하지 않아도 새 DB를 받을 수 있습니다.
+
+1. `.github/workflows/library.yml`이 **매일** 원본 저장소의 최신 커밋을 확인합니다. 바뀌었으면 DB를 다시 만들어
+   `library-db` 릴리스에 `index.json`(DB)과 `manifest.json`(요약)을 올립니다.
+2. 앱은 실행할 때 `manifest.json`을 확인합니다. 새 DB가 있으면 **추가/삭제된 색상과 함께 업데이트할지 묻습니다.**
+   - **업데이트:** 내려받아 검증한 뒤 교체합니다. 실패하면 기존 DB를 그대로 씁니다.
+   - **나중에:** 그 버전은 앱 시작 시 다시 묻지 않습니다. 도움말 탭의 **DB 업데이트 확인**으로 언제든 받을 수 있습니다.
+3. 앱을 새 버전으로 업데이트해서 내장 DB가 더 최신이 되면 자동으로 내장 DB를 씁니다.
+
+> 매일 자동 실행(`schedule`)과 수동 실행(`workflow_dispatch`)은 GitHub 규칙상 **기본 브랜치(main)에 워크플로 파일이 있어야** 동작합니다.
+> 그 전에는 `scripts/build_tag_library.py`나 워크플로 파일이 바뀌어 푸시될 때만 DB가 게시됩니다.
+
+직접 만들어 보려면:
 
 ```sh
 git clone --depth 1 https://github.com/queengooborg/Bambu-Lab-RFID-Library.git /tmp/lib
-python3 scripts/build_tag_library.py /tmp/lib app/src/main/assets/library/index.json
+python3 scripts/build_tag_library.py /tmp/lib app/src/main/assets/library/index.json --manifest /tmp/manifest.json
 ```
 
 ## 라이선스

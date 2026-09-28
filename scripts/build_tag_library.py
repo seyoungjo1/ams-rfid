@@ -24,6 +24,8 @@ BLOCKS = 64
 DUMP_SIZE = BLOCK * BLOCKS
 SALT = bytes.fromhex("9a759cf2c4f7caff222cb9769b41bc96")
 CATEGORY_ORDER = ["PLA", "PETG", "ABS", "ASA", "PC", "PA", "TPU", "Support Material"]
+# index.json/manifest.json 형식 버전. 앱이 모르는 형식은 내려받지 않는다.
+FORMAT_VERSION = 1
 
 
 def hkdf_keys(uid: bytes, info: bytes) -> list:
@@ -144,6 +146,7 @@ def main() -> int:
     parser.add_argument("library", type=Path)
     parser.add_argument("output", type=Path)
     parser.add_argument("--samples", type=int, default=6)
+    parser.add_argument("--manifest", type=Path, help="앱 업데이트 확인용 manifest.json 출력 경로")
     args = parser.parse_args()
 
     entries = []
@@ -191,16 +194,34 @@ def main() -> int:
         return (order, category, entry["material"], entry["color"])
 
     entries.sort(key=sort_key)
+    commit = git_commit(args.library)
+    generated = datetime.datetime.now(datetime.timezone.utc).strftime("%Y-%m-%dT%H:%M:%SZ")
+    # 앱은 파일 앞부분에서 commit/generated 를 빠르게 읽으므로 entries 보다 먼저 둔다.
     payload = {
         "source": "https://github.com/queengooborg/Bambu-Lab-RFID-Library",
-        "commit": git_commit(args.library),
-        "generated": datetime.datetime.now(datetime.timezone.utc).strftime("%Y-%m-%dT%H:%M:%SZ"),
+        "format": FORMAT_VERSION,
+        "commit": commit,
+        "generated": generated,
         "entries": entries,
     }
     args.output.parent.mkdir(parents=True, exist_ok=True)
     args.output.write_text(json.dumps(payload, ensure_ascii=False, separators=(",", ":")), encoding="utf-8")
     sample_count = sum(len(e["samples"]) for e in entries)
     print(f"{len(entries)} colors, {sample_count} samples, {rejected} rejected -> {args.output}")
+
+    if args.manifest:
+        # 앱이 업데이트 여부와 추가/삭제된 색상을 index.json 을 받기 전에 알 수 있도록 하는 요약.
+        manifest = {
+            "format": FORMAT_VERSION,
+            "commit": commit,
+            "generated": generated,
+            "colors": len(entries),
+            "samples": sample_count,
+            "keys": [f"{e['category']}/{e['material']}/{e['color']}" for e in entries],
+        }
+        args.manifest.parent.mkdir(parents=True, exist_ok=True)
+        args.manifest.write_text(json.dumps(manifest, ensure_ascii=False, separators=(",", ":")), encoding="utf-8")
+        print(f"manifest -> {args.manifest}")
     return 0 if entries else 1
 
 
