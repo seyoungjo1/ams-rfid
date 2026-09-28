@@ -51,11 +51,12 @@
     <string name="cuid_check">CUID 카드 점검</string>
     <string name="cuid_writable">사용 가능: 블록 0 재기록 가능한 CUID 카드입니다.</string>
     <string name="cuid_not_writable">사용 불가: 블록 0 을 다시 쓸 수 없는 일반 카드입니다.</string>
+    <string name="cuid_check_warning">FUID(1회 기록형) 카드에는 점검을 쓰지 마세요. 점검 과정에서 현재 UID 가 그대로 잠겨 버립니다.</string>
     <string name="cuid_needs_format">FF 키 인증 실패: 먼저 카드를 포맷/초기화해야 합니다.</string>
 
     <!-- 도움말 -->
     <string name="help_title">사용 방법</string>
-    <string name="help_body">1. NFC 와 MIFARE Classic 읽기/쓰기를 지원하는 안드로이드 폰이 필요합니다.\n2. 시중의 \"MIFARE Classic 1K CUID (2세대 매직/공칩)\" 카드를 준비하세요.\n3. 라이브러리에서 원하는 재질·색상을 고른 뒤 \"카드에 쓰기\"를 누르고, 빈 CUID 카드를 폰 뒷면에 대주세요.\n4. 완료되면 카드를 스풀에 붙이고 AMS 에 넣습니다.\n\n주의: 최신 AMS 펌웨어는 일부 CUID(2세대) 태그를 감지해 블록 0 에 잘못된 값을 써서 못 쓰게 만들 수 있습니다. 가장 확실한 것은 Gen4/FUID 태그입니다. 이 도구는 본인이 보유한 필라멘트/장비에서의 상호운용·백업 용도로만 사용하세요.</string>
+    <string name="help_body">1. NFC 와 MIFARE Classic 읽기/쓰기를 지원하는 안드로이드 폰이 필요합니다.\n2. \"MIFARE Classic 1K\" 중 CUID(2세대) 또는 FUID 로 표기된 카드/스티커를 준비하세요. 칩이 \"UID\"(1세대, Gen1a)로 표기된 제품은 폰으로 UID 를 바꿀 수 없고 AMS 도 거부하므로 사용할 수 없습니다.\n3. 라이브러리에서 원하는 재질·색상을 고른 뒤 \"카드에 쓰기\"를 누르고, 빈 CUID 카드를 폰 뒷면에 대주세요.\n4. 완료되면 카드를 스풀에 붙이고 AMS 에 넣습니다.\n\n주의: 최신 AMS 펌웨어는 일부 CUID(2세대) 태그를 감지해 블록 0 에 잘못된 값을 써서 못 쓰게 만들 수 있습니다. 가장 확실한 것은 Gen4/FUID 태그입니다. 이 도구는 본인이 보유한 필라멘트/장비에서의 상호운용·백업 용도로만 사용하세요.</string>
     <string name="help_disclaimer">데이터 출처: queengooborg/Bambu-Lab-RFID-Library (CC/GPL). 이 앱은 비공식 커뮤니티 도구입니다.</string>
     <string name="help_source">데이터 커밋: %1$s</string>
 </resources>

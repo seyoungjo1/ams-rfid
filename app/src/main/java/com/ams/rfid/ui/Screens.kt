@@ -238,6 +238,12 @@ private fun ReadScreen(vm: MainViewModel) {
         OutlinedButton(onClick = { vm.armCuidCheck() }, modifier = Modifier.fillMaxWidth()) {
             Text(stringResource(R.string.cuid_check))
         }
+        Spacer(Modifier.height(8.dp))
+        Text(
+            stringResource(R.string.cuid_check_warning),
+            style = MaterialTheme.typography.bodySmall,
+            color = MaterialTheme.colorScheme.error,
+        )
     }
 }
 

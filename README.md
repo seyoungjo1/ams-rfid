@@ -16,7 +16,9 @@
 
 - Android 8.0(API 26) 이상
 - **NFC + MIFARE Classic 읽기/쓰기**를 지원하는 폰 (대부분의 중급 이상 기기)
-- **MIFARE Classic 1K CUID(2세대) 매직 카드** — 블록 0 재기록이 가능한 공칩
+- **MIFARE Classic 1K CUID(2세대) 또는 FUID 카드/스티커** — 폰으로 블록 0(UID)을 쓸 수 있는 공칩
+  - 칩이 **"UID"(1세대, Gen1a)** 로 표기된 제품은 사용할 수 없습니다. 폰으로 UID를 바꿀 수 없고 AMS도 거부합니다.
+  - FUID는 UID를 한 번만 쓸 수 있습니다. FUID 카드에는 앱의 "CUID 카드 점검"을 쓰지 마세요(현재 UID가 잠김).
 
 ## APK 받기
 
@@ -26,6 +28,16 @@
 2. 또는 **Actions** 탭 → 최근 `Build APK` 실행 → 하단 **Artifacts**의 `ams-rfid-apk`.
 
 APK를 폰에 복사해 설치하세요(출처를 알 수 없는 앱 설치 허용 필요).
+
+## 서명 키 (업데이트 설치용)
+
+릴리스 APK는 저장소의 암호화된 고정 키 `keystore/release.jks.enc`로 서명됩니다. 같은 키로 서명돼야
+새 버전을 기존 앱 위에 덮어 설치할 수 있습니다.
+
+- 복호화 비밀번호는 저장소 시크릿 **`SIGNING_PASSPHRASE`** 에 둡니다
+  (Settings → Secrets and variables → Actions → New repository secret).
+- 시크릿이 없으면 워크플로는 임시 키로 빌드만 하고 릴리스는 게시하지 않습니다.
+- 비밀번호를 잃어버리면 같은 키로 다시 서명할 수 없어 앱을 지우고 새로 설치해야 합니다. 안전한 곳에 보관하세요.
 
 ## 사용법
 

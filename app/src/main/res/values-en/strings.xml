@@ -45,10 +45,11 @@
     <string name="cuid_check">Check CUID card</string>
     <string name="cuid_writable">OK: block 0 is rewritable (CUID card).</string>
     <string name="cuid_not_writable">Not usable: block 0 cannot be rewritten.</string>
+    <string name="cuid_check_warning">Do not run this check on FUID (write-once) cards: it would lock the current UID.</string>
     <string name="cuid_needs_format">FF auth failed: format the card first.</string>
 
     <string name="help_title">How to use</string>
-    <string name="help_body">1. You need an Android phone with NFC and MIFARE Classic read/write.\n2. Get a "MIFARE Classic 1K CUID (gen2 magic)" card.\n3. Pick a material/color in the library, tap "Write to card", and hold a blank CUID card to the back of your phone.\n4. When done, stick the card on your spool and load it into the AMS.\n\nNote: recent AMS firmware may detect some CUID (gen2) tags and brick them by writing bad data to block 0. Gen4/FUID tags are the most reliable. Use this tool only for interoperability/backup with filament and hardware you own.</string>
+    <string name="help_body">1. You need an Android phone with NFC and MIFARE Classic read/write.\n2. Get a MIFARE Classic 1K card/sticker labeled CUID (gen2) or FUID. Chips labeled \"UID\" (gen1a) cannot have their UID changed from a phone and are rejected by the AMS.\n3. Pick a material/color in the library, tap \"Write to card\", and hold a blank CUID card to the back of your phone.\n4. When done, stick the card on your spool and load it into the AMS.\n\nNote: recent AMS firmware may detect some CUID (gen2) tags and brick them by writing bad data to block 0. Gen4/FUID tags are the most reliable. Use this tool only for interoperability/backup with filament and hardware you own.</string>
     <string name="help_disclaimer">Data: queengooborg/Bambu-Lab-RFID-Library. Unofficial community tool.</string>
     <string name="help_source">Data commit: %1$s</string>
 </resources>
