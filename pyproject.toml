@@ -19,6 +19,9 @@ amsrfid = "amsrfid.cli:main"
 [tool.setuptools]
 packages = ["amsrfid"]
 
+[tool.setuptools.package-data]
+amsrfid = ["ui.html"]
+
 [tool.setuptools.dynamic]
 version = { file = ["VERSION"] }
 

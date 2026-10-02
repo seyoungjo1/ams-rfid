@@ -1,0 +1,83 @@
+from __future__ import annotations
+
+import time
+from pathlib import Path
+
+from amsrfid import web
+from amsrfid.config import Config
+
+
+def _cfg(tmp_path: Path) -> Config:
+    return Config(outdir=str(tmp_path / "out"), timeout=5, poll=0.01, wait=1, root=tmp_path)
+
+
+def test_job_log_and_snapshot():
+    j = web.Job("auto")
+    j.log("첫 줄")
+    j.log("둘\n셋")                 # 줄바꿈은 여러 줄로 쪼갠다
+    snap = j.snapshot(0)
+    assert snap["lines"] == ["첫 줄", "둘", "셋"]
+    assert snap["total"] == 3
+    assert j.snapshot(2)["lines"] == ["셋"]   # since 이후만
+
+
+def test_dumps_lists_bins(tmp_path):
+    cfg = _cfg(tmp_path)
+    cfg.out_path.mkdir(parents=True)
+    (cfg.out_path / "ams-DEAD.bin").write_bytes(b"\x00" * 1024)
+    (cfg.out_path / "note.txt").write_text("x")
+    app = web.App(cfg)
+    names = [d["name"] for d in app.dumps()]
+    assert names == ["ams-DEAD.bin"]
+    assert app.dumps()[0]["size"] == 1024
+
+
+def test_clone_rejects_missing_and_traversal(tmp_path):
+    cfg = _cfg(tmp_path)
+    cfg.out_path.mkdir(parents=True)
+    app = web.App(cfg)
+    assert app.start_clone("nope.bin")["ok"] is False
+    # out 폴더 밖으로 빠져나가려는 경로는 막힌다
+    assert app.start_clone("../../etc/passwd")["ok"] is False
+
+
+def test_status_has_version(tmp_path):
+    app = web.App(_cfg(tmp_path))
+    s = app.status()
+    assert "version" in s
+    # pm3 가 깔려 있지 않은 CI 에서는 pm3=None 이어야 한다(예외가 아니라)
+    assert "pm3" in s
+
+
+def test_update_job_runs_in_thread(tmp_path, monkeypatch):
+    cfg = _cfg(tmp_path)
+    app = web.App(cfg)
+
+    def fake_update_run(check_only=False, root=None, echo=print):
+        echo("업데이트 확인 중…")
+        echo("최신입니다.")
+        return 0
+
+    monkeypatch.setattr(web.update, "run", fake_update_run)
+    assert app.start_update()["ok"] is True
+    # 스레드가 끝날 때까지 잠깐 기다린다
+    for _ in range(100):
+        if app.job and not app.job.running:
+            break
+        time.sleep(0.01)
+    snap = app.job_snapshot(0)
+    assert snap["running"] is False
+    assert snap["ok"] is True
+    assert "최신입니다." in snap["lines"]
+
+
+def test_only_one_job_at_a_time(tmp_path, monkeypatch):
+    app = web.App(_cfg(tmp_path))
+
+    def slow(check_only=False, root=None, echo=print):
+        time.sleep(0.2)
+
+    monkeypatch.setattr(web.update, "run", slow)
+    assert app.start_update()["ok"] is True
+    second = app.start_update()        # 아직 도는 중 — 거절돼야 한다
+    assert second["ok"] is False

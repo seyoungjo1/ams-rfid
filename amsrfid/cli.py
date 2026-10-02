@@ -1,6 +1,7 @@
 """명령줄 진입점.
 
   python -m amsrfid            → 메뉴
+  python -m amsrfid ui         → 브라우저로 쓰는 로컬 웹 UI (run.bat 기본)
   python -m amsrfid auto       → 원터치(장치/카드 대기 → 키 복구 → .bin 저장)
   python -m amsrfid clone      → 원터치로 읽은 뒤 대상 카드에 복제
   python -m amsrfid clone --from out/ams-....bin  → 그 파일을 대상 카드에 복제
@@ -24,6 +25,10 @@ def build_parser() -> argparse.ArgumentParser:
 
     sub.add_parser("menu", help="대화형 메뉴")
     sub.add_parser("auto", help="원터치: 꽂고 올리면 키 복구 후 .bin 저장")
+
+    pw = sub.add_parser("ui", help="브라우저로 쓰는 로컬 웹 UI")
+    pw.add_argument("--port", type=int, default=8724, help="포트(기본 8724)")
+    pw.add_argument("--no-browser", action="store_true", help="브라우저를 자동으로 열지 않음")
 
     pc = sub.add_parser("clone", help="대상 카드에 복제(쓰기)")
     pc.add_argument("--from", dest="src", default=None, help="쓸 .bin 파일(없으면 먼저 원터치로 읽음)")
@@ -83,6 +88,9 @@ def main(argv: list[str] | None = None) -> int:
             return menu.run(cfg)
         if cmd == "auto":
             return cmd_auto(cfg)
+        if cmd == "ui":
+            from . import web
+            return web.serve(cfg, port=args.port, open_browser=not args.no_browser)
         if cmd == "clone":
             return cmd_clone(cfg, args.src)
         if cmd == "info":

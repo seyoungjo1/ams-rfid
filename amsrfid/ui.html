@@ -1,0 +1,246 @@
+<!doctype html>
+<html lang="ko">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>ams-rfid</title>
+<style>
+  :root{
+    --bg:#0e1116; --panel:#161b22; --panel2:#1c232d; --line:#2a323d;
+    --fg:#e6edf3; --muted:#9aa7b4; --accent:#3fb6a8; --accent-ink:#06241f;
+    --warn:#e3b341; --bad:#f06d6d; --good:#59c67f; --radius:14px;
+  }
+  @media (prefers-color-scheme: light){
+    :root:not([data-theme="dark"]){
+      --bg:#f3f5f8; --panel:#ffffff; --panel2:#f0f3f7; --line:#dde3ea;
+      --fg:#111820; --muted:#5a6675; --accent:#157d72; --accent-ink:#ffffff;
+    }
+  }
+  *{box-sizing:border-box}
+  html,body{margin:0}
+  body{
+    background:var(--bg); color:var(--fg);
+    font-family:"Segoe UI",system-ui,-apple-system,"Malgun Gothic","Apple SD Gothic Neo",sans-serif;
+    line-height:1.5; padding:0 16px 48px;
+  }
+  .wrap{max-width:860px; margin:0 auto}
+  header{display:flex; align-items:center; gap:12px; padding:22px 2px 14px}
+  .logo{width:34px;height:34px;border-radius:9px;background:linear-gradient(135deg,var(--accent),#6ea8fe);
+        display:grid;place-items:center;font-weight:800;color:var(--accent-ink);font-size:15px}
+  h1{font-size:19px; margin:0; letter-spacing:.2px}
+  .ver{color:var(--muted); font-size:12px}
+  .spacer{flex:1}
+  .chip{display:inline-flex;align-items:center;gap:7px;font-size:12.5px;padding:6px 11px;
+        border:1px solid var(--line);border-radius:999px;background:var(--panel);color:var(--muted)}
+  .dot{width:8px;height:8px;border-radius:50%;background:var(--muted)}
+  .dot.ok{background:var(--good)} .dot.no{background:var(--bad)}
+  .card{background:var(--panel);border:1px solid var(--line);border-radius:var(--radius);
+        padding:18px;margin:14px 0}
+  .banner{display:flex;gap:10px;background:color-mix(in srgb,var(--warn) 14%,transparent);
+          border:1px solid color-mix(in srgb,var(--warn) 45%,var(--line));color:var(--fg);
+          font-size:13px;border-radius:12px;padding:12px 14px;margin:8px 0 2px}
+  .banner b{color:var(--warn)}
+  h2{font-size:14px;margin:0 0 10px;color:var(--muted);font-weight:600;text-transform:none;letter-spacing:.3px}
+  .btn{appearance:none;border:1px solid var(--line);background:var(--panel2);color:var(--fg);
+       font-size:14px;font-weight:600;padding:11px 16px;border-radius:11px;cursor:pointer;
+       transition:transform .05s ease,border-color .15s,background .15s}
+  .btn:hover{border-color:var(--accent)}
+  .btn:active{transform:translateY(1px)}
+  .btn:disabled{opacity:.45;cursor:not-allowed}
+  .btn.primary{background:var(--accent);color:var(--accent-ink);border-color:transparent;
+       font-size:16px;padding:15px 20px;width:100%}
+  .btn.sm{padding:7px 12px;font-size:13px}
+  .hint{color:var(--muted);font-size:13px;margin:10px 2px 0}
+  .row{display:flex;gap:10px;flex-wrap:wrap;align-items:center}
+  .log{background:#0b0e13;border:1px solid var(--line);border-radius:11px;padding:12px 14px;
+       font-family:"Cascadia Code",ui-monospace,Menlo,Consolas,monospace;font-size:12.5px;
+       color:#cdd6e0;min-height:120px;max-height:320px;overflow:auto;white-space:pre-wrap;word-break:break-word}
+  .log:empty::before{content:"진행 상황이 여기에 표시됩니다.";color:var(--muted)}
+  @media (prefers-color-scheme: light){:root:not([data-theme="dark"]) .log{background:#0e1116;color:#cdd6e0}}
+  .dumps{display:flex;flex-direction:column;gap:8px}
+  .dump{display:flex;align-items:center;gap:12px;background:var(--panel2);border:1px solid var(--line);
+        border-radius:11px;padding:10px 12px}
+  .dump .name{font-family:ui-monospace,Consolas,monospace;font-size:13px;word-break:break-all}
+  .dump .size{color:var(--muted);font-size:12px;margin-left:auto;white-space:nowrap}
+  .empty{color:var(--muted);font-size:13px;padding:6px 2px}
+  .result{margin-top:12px;font-size:13.5px;border-radius:11px;padding:11px 13px;display:none}
+  .result.show{display:block}
+  .result.ok{background:color-mix(in srgb,var(--good) 14%,transparent);border:1px solid color-mix(in srgb,var(--good) 45%,var(--line))}
+  .result.err{background:color-mix(in srgb,var(--bad) 13%,transparent);border:1px solid color-mix(in srgb,var(--bad) 45%,var(--line))}
+  footer{color:var(--muted);font-size:12px;text-align:center;margin-top:22px}
+  a{color:var(--accent)}
+</style>
+</head>
+<body>
+<div class="wrap">
+  <header>
+    <div class="logo">RF</div>
+    <div>
+      <h1>ams-rfid</h1>
+      <div class="ver">FM11RF08S 원터치 도구 · <span id="ver">v…</span></div>
+    </div>
+    <div class="spacer"></div>
+    <span class="chip"><span class="dot" id="pm3dot"></span><span id="pm3txt">장치 확인 중…</span></span>
+  </header>
+
+  <div class="banner">
+    <div>⚠️</div>
+    <div><b>본인 소유이거나 점검 권한이 있는 카드에만</b> 사용하세요. 남의 카드를 허락 없이
+      복제하는 것은 불법입니다. 복제(쓰기)는 대상 카드를 덮어쓰며 되돌릴 수 없습니다.</div>
+  </div>
+
+  <div class="card">
+    <h2>원터치 읽기</h2>
+    <button class="btn primary" id="btnAuto">🔓 꽂고 올린 카드 읽어서 .bin 저장</button>
+    <div class="hint">Proxmark3 를 USB 에 꽂고(아무것도 안 떠 있어도 됨) 버튼을 누른 뒤,
+      안내가 나오면 카드를 안테나 위에 올리세요. 장치 탐지 → 카드 탐지 → 종류 확인 →
+      키 복구 → 저장까지 저절로 진행됩니다.</div>
+    <div class="result" id="result"></div>
+  </div>
+
+  <div class="card">
+    <h2>진행 상황</h2>
+    <div class="log" id="log"></div>
+  </div>
+
+  <div class="card">
+    <div class="row" style="margin-bottom:10px">
+      <h2 style="margin:0">저장된 덤프 (.bin)</h2>
+      <div class="spacer"></div>
+      <button class="btn sm" id="btnRefresh">새로고침</button>
+      <button class="btn sm" id="btnUpdate">업데이트 확인</button>
+    </div>
+    <div class="dumps" id="dumps"><div class="empty">불러오는 중…</div></div>
+    <div class="hint">복제는 대상 카드를 올린 상태에서 누르세요 — 매직카드는 UID 까지,
+      일반/정품은 키가 맞는 블록을 되씁니다.</div>
+  </div>
+
+  <footer>127.0.0.1 로컬 전용 · 이 창을 닫으면 UI 가 꺼집니다</footer>
+</div>
+
+<script>
+(function(){
+  "use strict";
+  var busy = false, since = 0, poll = null;
+  var $ = function(id){ return document.getElementById(id); };
+
+  function setBusy(b){
+    busy = b;
+    ["btnAuto","btnRefresh","btnUpdate"].forEach(function(id){ $(id).disabled = b; });
+    document.querySelectorAll(".btnClone").forEach(function(el){ el.disabled = b; });
+  }
+  function human(n){
+    if(n < 1024) return n + " B";
+    if(n < 1048576) return (n/1024).toFixed(0) + " KB";
+    return (n/1048576).toFixed(1) + " MB";
+  }
+  function appendLog(lines){
+    if(!lines || !lines.length) return;
+    var el = $("log");
+    el.textContent += (el.textContent ? "\n" : "") + lines.join("\n");
+    el.scrollTop = el.scrollHeight;
+  }
+  function clearLog(){ $("log").textContent = ""; since = 0; }
+  function showResult(kind, html){
+    var r = $("result");
+    r.className = "result show " + kind;
+    r.innerHTML = html;
+  }
+  function hideResult(){ $("result").className = "result"; }
+
+  function api(method, path, body){
+    return fetch(path, {
+      method: method,
+      headers: body ? {"Content-Type":"application/json"} : undefined,
+      body: body ? JSON.stringify(body) : undefined
+    }).then(function(r){ return r.json(); });
+  }
+
+  function loadStatus(){
+    api("GET","/api/status").then(function(s){
+      $("ver").textContent = "v" + (s.version || "?");
+      var ok = !!s.pm3;
+      $("pm3dot").className = "dot " + (ok ? "ok" : "no");
+      $("pm3txt").textContent = ok ? "pm3 준비됨" : "pm3 없음";
+      $("pm3txt").title = ok ? s.pm3 : (s.pm3_error || "");
+    }).catch(function(){
+      $("pm3dot").className = "dot no"; $("pm3txt").textContent = "서버 응답 없음";
+    });
+  }
+
+  function loadDumps(){
+    api("GET","/api/dumps").then(function(list){
+      var box = $("dumps");
+      if(!list.length){ box.innerHTML = '<div class="empty">아직 저장된 덤프가 없습니다. 위에서 원터치로 떠 보세요.</div>'; return; }
+      box.innerHTML = "";
+      list.forEach(function(d){
+        var row = document.createElement("div"); row.className = "dump";
+        var name = document.createElement("div"); name.className = "name"; name.textContent = d.name;
+        var size = document.createElement("div"); size.className = "size"; size.textContent = human(d.size);
+        var btn = document.createElement("button"); btn.className = "btn sm btnClone"; btn.textContent = "대상 카드에 복제";
+        btn.disabled = busy;
+        btn.onclick = function(){ cloneDump(d.name); };
+        row.appendChild(name); row.appendChild(size); row.appendChild(btn);
+        box.appendChild(row);
+      });
+    });
+  }
+
+  function startPolling(onDone){
+    if(poll) clearInterval(poll);
+    poll = setInterval(function(){
+      api("GET","/api/job?since=" + since).then(function(j){
+        if(j.idle){ return; }
+        appendLog(j.lines);
+        if(typeof j.total === "number") since = j.total;
+        if(!j.running){
+          clearInterval(poll); poll = null; setBusy(false);
+          onDone(j);
+        }
+      }).catch(function(){ /* 잠깐의 실패는 다음 폴링에서 회복 */ });
+    }, 700);
+  }
+
+  function run(kind, start){
+    if(busy) return;
+    hideResult(); clearLog(); setBusy(true);
+    start().then(function(res){
+      if(res && res.ok === false){
+        setBusy(false);
+        showResult("err", "시작하지 못했습니다: " + (res.error || ""));
+        return;
+      }
+      startPolling(function(j){
+        loadDumps();
+        if(j.ok){
+          if(kind === "auto" && j.result && j.result.bin){
+            showResult("ok", "✅ 저장 완료 — <b>" + j.result.bin + "</b>" +
+              (j.result.uid ? " (UID " + j.result.uid + ")" : ""));
+          } else if(kind === "clone" && j.result && j.result.wrote){
+            showResult("ok", "✅ 복제 완료 — <b>" + j.result.wrote + "</b> 를 대상 카드에 썼습니다.");
+          } else {
+            showResult("ok", "✅ 완료되었습니다.");
+          }
+        } else {
+          showResult("err", "⚠️ " + (j.error || "작업에 실패했습니다.").replace(/\n/g," "));
+        }
+      });
+    }).catch(function(){ setBusy(false); showResult("err","서버에 연결하지 못했습니다."); });
+  }
+
+  function cloneDump(name){
+    if(busy) return;
+    if(!confirm("대상 카드의 내용을 덮어씁니다.\n본인 소유/권한이 있는 카드인지 확인하셨나요?\n\n복제할 파일: " + name)) return;
+    run("clone", function(){ return api("POST","/api/clone",{name:name}); });
+  }
+
+  $("btnAuto").onclick = function(){ run("auto", function(){ return api("POST","/api/auto"); }); };
+  $("btnUpdate").onclick = function(){ run("update", function(){ return api("POST","/api/update"); }); };
+  $("btnRefresh").onclick = loadDumps;
+
+  loadStatus(); loadDumps();
+  setInterval(loadStatus, 4000);
+})();
+</script>
+</body>
+</html>
