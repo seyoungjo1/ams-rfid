@@ -1,0 +1,26 @@
+[build-system]
+requires = ["setuptools>=61"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "ams-rfid"
+dynamic = ["version"]
+description = "Proxmark3 로 FM11RF08S 를 원터치로 읽고 복원하는 도구"
+readme = "README.md"
+requires-python = ">=3.9"
+dependencies = []
+
+[project.optional-dependencies]
+toml = ["tomli; python_version < '3.11'"]
+
+[project.scripts]
+amsrfid = "amsrfid.cli:main"
+
+[tool.setuptools]
+packages = ["amsrfid"]
+
+[tool.setuptools.dynamic]
+version = { file = ["VERSION"] }
+
+[tool.pytest.ini_options]
+testpaths = ["tests"]

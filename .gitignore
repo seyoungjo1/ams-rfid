@@ -1,0 +1,19 @@
+# 사용자 것 — 자동 업데이트에서도 제외됩니다.
+token.txt
+amsrfid.toml
+ams-rfid.toml
+out/
+backup/
+venv/
+.venv/
+
+# 파이썬
+__pycache__/
+*.pyc
+*.egg-info/
+.pytest_cache/
+
+# 덤프/키 — 실수로 올리지 않도록
+*.bin
+*.eml
+out/*.json
