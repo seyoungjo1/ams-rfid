@@ -41,14 +41,18 @@ class FakePm3:
         self.commands.extend(commands)
         joined = " ; ".join(commands)
 
-        if "hf 14a info" in joined:
-            return Pm3Result(0, "UID: %s\nATQA: 00 04\nSAK: 08\n" % " ".join(
-                self.uid[i:i+2] for i in range(0, len(self.uid), 2)), "")
-        if "hf mf info" in joined:
+        # identify 는 두 명령을 한 번에 넘긴다 — 둘 다 있으면 합쳐서 돌려준다.
+        has14 = "hf 14a info" in joined
+        hasmf = "hf mf info" in joined
+        if has14 or hasmf:
             txt = ""
-            if self.fm11rf08s:
-                txt += "Fudan FM11RF08S\nBackdoor coms supported: present (key A396EFA4E24F)\n"
-            txt += "Magic capabilities... %s\n" % (self.magic or "n/a")
+            if has14:
+                txt += "UID: %s\nATQA: 00 04\nSAK: 08\n" % " ".join(
+                    self.uid[i:i+2] for i in range(0, len(self.uid), 2))
+            if hasmf:
+                if self.fm11rf08s:
+                    txt += "Fudan FM11RF08S\nBackdoor coms supported: present (key A396EFA4E24F)\n"
+                txt += "Magic capabilities... %s\n" % (self.magic or "n/a")
             return Pm3Result(0, txt, "")
         if "fm11rf08s_recovery" in joined or "hf mf autopwn" in joined:
             # FM11RF08S 는 recovery 스크립트, 일반 카드는 autopwn — 둘 다 성공 시 덤프를 떨군다.

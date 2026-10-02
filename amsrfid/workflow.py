@@ -39,29 +39,49 @@ class OneTouchResult:
 
 
 def wait_for_device(pm3: Pm3, cfg: Config, echo: Echo = print) -> None:
-    from .pm3 import detect_device
-    echo("Proxmark3 를 찾는 중… (USB 에 꽂아 주세요)")
+    """장치가 꽂힐 때까지 **가볍게** 기다린다.
+
+    매 폴링마다 클라이언트를 띄우거나(느림) PowerShell 스캔을 돌리지 않는다. pyserial 로
+    포트만 빠르게 확인하고(저부하), '장치는 보이는데 COM 없음(드라이버 필요)'은 몇 초에 한 번만
+    무거운 PnP 스캔으로 본다.
+    """
+    from .pm3 import detect_device, _pyserial_ports, _port_is_pm3
+    echo("Proxmark3 를 찾는 중… (데이터 전송용 USB 케이블로 꽂아 주세요)")
     deadline = time.monotonic() + cfg.wait
     first = True
+    last_pnp = 0.0
     while True:
-        if pm3.device_present():
-            echo("  → Proxmark3 연결 확인")
-            return
-        # 장치는 보이는데 COM 포트가 없으면(=드라이버 없음) 바로 알려 준다.
-        dev = detect_device()
-        if dev.get("needs_driver"):
+        # 1) 빠른 길: pyserial 로 PM3 포트가 보이면 바로 그 포트를 쓴다.
+        ports = _pyserial_ports()
+        if ports is not None:
+            for pi in ports:
+                if _port_is_pm3(pi):
+                    pm3.port = pi["device"]
+                    echo("  → %s 에서 Proxmark3 감지" % pi["device"])
+                    return
+        now = time.monotonic()
+        # 2) 무거운 길(드라이버 필요/케이블 문제)은 몇 초에 한 번만.
+        if now - last_pnp > 5:
+            last_pnp = now
+            dev = detect_device()
+            if dev.get("com"):
+                pm3.port = dev["com"]
+                echo("  → %s 에서 Proxmark3 감지" % dev["com"])
+                return
+            if dev.get("needs_driver"):
+                raise DeviceNotFound(
+                    "장치는 보이는데 COM 포트가 없습니다%s. 대개 '충전 전용 USB 케이블'이 원인입니다 — "
+                    "데이터선 케이블 + 본체 USB 포트로 바꿔 꽂아 보세요. 그래도 안 되면 웹 UI 의 "
+                    "'드라이버 등록' 버튼을 쓰세요."
+                    % (" (" + dev.get("name", "") + ")" if dev.get("name") else "")
+                )
+        if now > deadline:
             raise DeviceNotFound(
-                "Proxmark3 장치는 보이는데 드라이버가 없어 COM 포트가 안 잡힙니다"
-                "%s.\n'드라이버 설치'(웹 UI 버튼 또는 `python -m amsrfid driver`)를 먼저 실행하세요."
-                % (" (" + dev.get("name", "") + ")" if dev.get("name") else "")
-            )
-        if time.monotonic() > deadline:
-            raise DeviceNotFound(
-                "제한 시간(%.0f초) 안에 Proxmark3 를 찾지 못했습니다. "
-                "USB 케이블·포트를 확인하거나, 드라이버를 설치해 보세요." % cfg.wait
+                "제한 시간(%.0f초) 안에 Proxmark3 를 찾지 못했습니다. '데이터 전송용' USB 케이블인지"
+                "(충전 전용은 안 됨), 본체 USB 포트인지 확인하세요." % cfg.wait
             )
         if first:
-            echo("  (아직 안 보입니다 — 꽂을 때까지 기다립니다)")
+            echo("  (아직 안 보입니다 — 꽂을 때까지 기다립니다. 데이터선 케이블인지 꼭 확인)")
             first = False
         time.sleep(cfg.poll)
 
@@ -86,10 +106,10 @@ def wait_for_card(pm3: Pm3, cfg: Config, echo: Echo = print) -> None:
 
 def identify(pm3: Pm3, echo: Echo = print) -> D.CardInfo:
     echo("카드 종류를 확인하는 중…")
-    r14 = pm3.run("hf 14a info", timeout=30)
-    info = D.parse_14a_info(r14.text)
-    rmf = pm3.run("hf mf info", timeout=60)
-    D.parse_mf_info(rmf.text, into=info)
+    # 두 명령을 한 번의 클라이언트 실행으로 — USB 재핸드셰이크를 줄이고 카드 선택/RF 필드를 유지.
+    res = pm3.run(["hf 14a info", "hf mf info"], timeout=60)
+    info = D.parse_14a_info(res.text)
+    D.parse_mf_info(res.text, into=info)
     echo("  → %s" % info.summary)
     if not info.is_fm11rf08s:
         echo("  (주의: FM11RF08S 로 보이지 않습니다. 그래도 MIFARE Classic 1K 호환이면 진행합니다.)")
@@ -269,7 +289,54 @@ def clone_to_card(pm3: Pm3, bin_path: str | Path, cfg: Config, echo: Echo = prin
     low = res.text.lower()
     if ("fail" in low or "error" in low or "can't" in low) and "wrote" not in low and "ok" not in low:
         raise WorkflowError("쓰기에 실패했을 수 있습니다. pm3 출력 확인:\n" + res.text[-700:])
-    echo("복제 시도 완료 — %s 를 대상 카드에 썼습니다. (hf mf dump 로 되읽어 검증을 권장)" % bin_path.name)
+    echo("복제 시도 완료 — %s 를 대상 카드에 썼습니다." % bin_path.name)
+
+    # 되읽어 검증(best-effort). 검증 못 해도 복제를 실패로 치지는 않는다.
+    verify_clone(pm3, d, info, cfg, echo)
+
+
+def verify_clone(pm3: Pm3, d: "D.Dump", info: D.CardInfo, cfg: Config, echo: Echo = print) -> bool | None:
+    """복제 후 대상 카드를 되읽어 쓰려던 내용과 맞는지 확인한다.
+
+    돌려주는 값: True=일치, False=불일치, None=검증 불가(키/덤프 못 읽음 등).
+    gen1a 는 블록0(UID·서명)까지, 그 외는 데이터 블록을 비교한다(일반 카드는 블록0 제외).
+    """
+    out = cfg.out_path
+    for stale in out.glob("hf-mf-*-dump.bin"):
+        try:
+            stale.unlink()
+        except OSError:
+            pass
+    echo("되읽어 검증 중…")
+    kf = d.write_key_file(out / ("hf-mf-%s-verify-key.bin" % d.uid))
+    started = time.time()
+    pm3.run('hf mf dump -k "%s"' % kf, timeout=cfg.timeout)
+    back = _newest_match(out, "hf-mf-*-dump.bin", "", started)
+    if not back:
+        echo("  (되읽기 실패 — 직접 `hf mf dump` 로 확인해 보세요)")
+        return None
+    try:
+        rb = D.Dump.load(back)
+    except ValueError:
+        return None
+
+    gen1a = _is_gen1a(info.magic)
+    mism = []
+    for b in range(min(D.BLOCKS, len(d.data) // D.BLOCK, len(rb.data) // D.BLOCK)):
+        if not gen1a and b == 0:
+            continue                     # 일반 카드는 블록0(UID) 못 바꾸므로 비교 제외
+        if D.is_trailer(b):
+            continue                     # 트레일러 키는 되읽기로 안 보이므로 비교 제외
+        want = d.block(b)
+        if want == b"\x00" * D.BLOCK or want == b"\xff" * D.BLOCK:
+            continue                     # 빈 블록은 검증 의미 없음
+        if rb.block(b) != want:
+            mism.append(b)
+    if mism:
+        echo("  ⚠ 되읽기 불일치: 블록 %s — 복제가 완전하지 않을 수 있습니다." % mism[:8])
+        return False
+    echo("  → 검증 OK: 되읽은 내용이 원본과 일치합니다.")
+    return True
 
 
 # -- 전체 원터치 ------------------------------------------------------------

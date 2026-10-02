@@ -236,10 +236,13 @@ def _pyserial_ports() -> list[dict] | None:
         return None
     out = []
     for p in comports():
+        manuf = getattr(p, "manufacturer", "") or ""
+        serial = getattr(p, "serial_number", "") or ""
         desc = " ".join(filter(None, [
             getattr(p, "description", "") or "",
-            getattr(p, "manufacturer", "") or "",
+            manuf,
             getattr(p, "product", "") or "",
+            serial,
             getattr(p, "hwid", "") or "",
         ]))
         out.append({
@@ -247,12 +250,17 @@ def _pyserial_ports() -> list[dict] | None:
             "vid": getattr(p, "vid", None),
             "pid": getattr(p, "pid", None),
             "desc": desc,
+            "manufacturer": manuf,
+            "serial": serial,
         })
     return out
 
 
 def _port_is_pm3(info: dict) -> bool:
     if info.get("vid") and info.get("pid") and (info["vid"], info["pid"]) in _PM3_VIDPID:
+        return True
+    # pm3 래퍼의 udev/ioreg 벤더 교차확인과 같은, 설명 substring 보다 강한 신호
+    if "proxmark.org" in (info.get("manufacturer") or "").lower():
         return True
     d = (info.get("desc") or "").lower()
     return "proxmark" in d or "iceman" in d
@@ -358,7 +366,7 @@ def detect_port() -> str | None:
         for pi in ports:
             if _port_is_pm3(pi):
                 return pi["device"]
-    for pat in ("/dev/pm3-*", "/dev/ttyACM*", "/dev/tty.usbmodem*", "/dev/cu.usbmodem*", "/dev/ttyUSB*"):
+    for pat in ("/dev/pm3-*", "/dev/ttyACM*", "/dev/cu.usbmodem*", "/dev/tty.usbmodem*", "/dev/ttyUSB*"):
         hits = sorted(glob.glob(pat))
         if hits:
             return hits[0]
@@ -464,6 +472,22 @@ def find_firmware_images(client: str) -> dict:
     return out
 
 
+# 터미널 색상(ANSI) 이스케이프 — 문자열 매칭 전에 벗겨 낸다(pm3.bat 빌드가 색을 흘릴 때 대비).
+_ANSI = re.compile(r"(\x9B|\x1B\[)[0-?]*[ -/]*[@-~]")
+
+# '장치와 통신 실패'로 보이는 출력 — 포트가 바뀌었을 수 있으니 재탐지·재시도의 신호.
+_DISCONNECT_HINTS = (
+    "offline", "cannot communicate", "communicating with the proxmark",
+    "failed to open", "unable to open", "no response", "comm error",
+    "proxmark3 not found", "reconnect", "serial port", "device not found",
+)
+
+
+def _looks_disconnected(text: str) -> bool:
+    t = (text or "").lower()
+    return any(h in t for h in _DISCONNECT_HINTS)
+
+
 @dataclass
 class Pm3Result:
     returncode: int
@@ -472,7 +496,8 @@ class Pm3Result:
 
     @property
     def text(self) -> str:
-        return self.stdout + ("\n" + self.stderr if self.stderr else "")
+        raw = self.stdout + ("\n" + self.stderr if self.stderr else "")
+        return _ANSI.sub("", raw)
 
 
 @dataclass
@@ -523,11 +548,7 @@ class Pm3:
             args.extend(["-c", c])
         return args
 
-    def run(self, commands: str | list[str], timeout: float = 180) -> Pm3Result:
-        """명령(들)을 차례로 돌리고 출력을 모아 돌려준다."""
-        if isinstance(commands, str):
-            commands = [commands]
-        args = self._build_args(commands)
+    def _run_subprocess(self, args: list[str], timeout: float) -> Pm3Result:
         try:
             done = subprocess.run(
                 args,
@@ -538,32 +559,36 @@ class Pm3:
         except FileNotFoundError as e:
             raise DeviceNotFound("pm3 를 실행하지 못했습니다: %s" % e) from None
         except subprocess.TimeoutExpired:
-            raise Pm3Error(
-                "pm3 명령이 %.0f초 안에 끝나지 않았습니다: %s" % (timeout, "; ".join(commands))
-            ) from None
+            raise Pm3Error("pm3 명령이 %.0f초 안에 끝나지 않았습니다." % timeout) from None
         out = (done.stdout or b"").decode("utf-8", "replace")
         err = (done.stderr or b"").decode("utf-8", "replace")
         return Pm3Result(done.returncode, out, err)
 
+    def run(self, commands: str | list[str], timeout: float = 180) -> Pm3Result:
+        """명령(들)을 차례로 돌리고 출력을 모아 돌려준다.
+
+        replug/리셋으로 포트가 바뀌면(COM7→COM8) 캐시된 포트로는 조용히 실패하므로,
+        끊김 신호가 보이면 포트를 비우고 한 번 다시 찾아 딱 한 번 재시도한다.
+        """
+        if isinstance(commands, str):
+            commands = [commands]
+        res = self._run_subprocess(self._build_args(commands), timeout)
+        if _looks_disconnected(res.text):
+            old = self.port
+            self.port = None
+            fresh = self._resolved_port()          # 새로 탐지
+            if fresh and fresh != old:
+                res = self._run_subprocess(self._build_args(commands), timeout)
+        return res
+
     def run_raw(self, extra: list[str], timeout: float = 300) -> Pm3Result:
-        """`-c` 없이 클라이언트를 직접 호출한다(플래싱 등: proxmark3 -p <port> --flash ...)."""
+        """`-c` 없이 클라이언트를 직접 호출한다(플래싱 등). 플래싱은 자동 재시도하지 않는다."""
         args = [self.client]
         port = self._resolved_port()
         if port:
             args.extend(["-p", port])
         args.extend(extra)
-        try:
-            done = subprocess.run(
-                args, cwd=str(self.workdir) if self.workdir else None,
-                capture_output=True, timeout=timeout,
-            )
-        except FileNotFoundError as e:
-            raise DeviceNotFound("pm3 를 실행하지 못했습니다: %s" % e) from None
-        except subprocess.TimeoutExpired:
-            raise Pm3Error("명령이 %.0f초 안에 끝나지 않았습니다." % timeout) from None
-        out = (done.stdout or b"").decode("utf-8", "replace")
-        err = (done.stderr or b"").decode("utf-8", "replace")
-        return Pm3Result(done.returncode, out, err)
+        return self._run_subprocess(args, timeout)
 
     # -- 장치/카드 상태 ----------------------------------------------------
 

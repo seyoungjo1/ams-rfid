@@ -59,7 +59,9 @@ def flash_if_needed(cfg: Config, client: str, echo: Echo = print, force: bool = 
     echo("· 펌웨어를 플래싱합니다(fullimage) — 장치를 뽑지 마세요…")
     res = pm3.run_raw(["--flash", "--image", imgs["fullimage"]], timeout=max(cfg.timeout, 300))
     low = res.text.lower()
-    ok = res.returncode == 0 and ("done" in low or "wrote" in low or "success" in low) and "fail" not in low
+    # pm3 의 한방 종료코드는 서브명령마다 믿을 게 못 되므로, 완료 배너로도 확인한다.
+    ok = (("have a nice day" in low) or ("done" in low) or ("wrote" in low) or ("success" in low)) \
+        and "fail" not in low and "error" not in low
     if not ok:
         echo("  → 플래싱이 안 끝났을 수 있습니다. 부트로더 모드(버튼 누른 채 꽂기)가 필요할 수 있어요.")
         echo(res.text[-400:])
