@@ -125,6 +125,7 @@
       <div class="spacer"></div>
       <button class="btn sm" id="btnImport">📂 불러오기</button>
       <input type="file" id="fileInput" accept=".bin" style="display:none">
+      <button class="btn sm" id="btnDiag">🩺 진단</button>
       <button class="btn sm" id="btnRefresh">새로고침</button>
       <button class="btn sm" id="btnUpdate">업데이트 확인</button>
     </div>
@@ -315,6 +316,28 @@
   $("btnRefresh").onclick = loadDumps;
   $("btnImport").onclick = function(){ $("fileInput").click(); };
   $("fileInput").onchange = function(e){ importFile(e.target.files[0]); e.target.value = ""; };
+  $("btnDiag").onclick = function(){
+    var box = $("analysis"); box.style.display = "block"; box.textContent = "진단 중…";
+    api("GET","/api/diag").then(function(d){
+      var L = [];
+      L.push("=== 진단 ===");
+      L.push("OS: " + d.os + " · PowerShell: " + d.powershell + " · 클라이언트: " + (d.client || "못 찾음"));
+      var dev = d.device || {};
+      L.push("장치: present=" + dev.present + " com=" + dev.com + " needs_driver=" + dev.needs_driver + " name=" + (dev.name||""));
+      L.push("레지스트리 COM: " + ((d.registry_com||[]).join(", ") || "(없음)"));
+      L.push("");
+      L.push("COM 포트 " + (d.com_ports||[]).length + "개:");
+      (d.com_ports||[]).forEach(function(c){ L.push("  " + c.com + "  " + c.name); });
+      L.push("");
+      L.push("PM3 로 보이는 장치 " + (d.pm3_devices||[]).length + "개:");
+      (d.pm3_devices||[]).forEach(function(p){ L.push("  " + p.name + "  errcode=" + p.errcode + "  [" + p.pnpid + "]"); });
+      if(!(d.pm3_devices||[]).length){
+        L.push("  → PM3 가 안 보입니다. 데이터선 USB 케이블/포트를 바꿔 꽂아 보세요.");
+        L.push("    위 COM 목록에 프록시마크 같은 게 있으면 그 번호를 알려 주세요.");
+      }
+      box.textContent = L.join("\n");
+    }).catch(function(){ box.textContent = "진단 실패(서버 응답 없음)"; });
+  };
   $("btnDriver").onclick = function(){
     var btn = $("btnDriver"); btn.disabled = true; btn.textContent = "설치 중… (UAC 창 확인)";
     api("POST","/api/driver").then(function(res){

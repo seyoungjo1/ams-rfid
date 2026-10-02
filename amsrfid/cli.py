@@ -54,6 +54,8 @@ def build_parser() -> argparse.ArgumentParser:
 
     sub.add_parser("flash", help="펌웨어를 최신으로 플래싱(공식 --flash, fullimage)")
 
+    sub.add_parser("diag", help="진단: 지금 도구가 보는 COM 포트·USB 장치·클라이언트를 전부 출력")
+
     sub.add_parser("info", help="카드 종류만 확인")
 
     pu = sub.add_parser("update", help="배포 브랜치에서 최신본 받기")
@@ -127,6 +129,32 @@ def cmd_flash(cfg: Config) -> int:
     return 0 if ok else 1
 
 
+def cmd_diag(cfg: Config) -> int:
+    from .pm3 import diagnostics
+    d = diagnostics()
+    print("=== ams-rfid 진단 ===")
+    print("OS: %s (%s) · Python %s · PowerShell: %s"
+          % (d.get("os"), d.get("platform"), d.get("python"), d.get("powershell")))
+    print("클라이언트: %s" % (d.get("client") or "못 찾음"))
+    dev = d.get("device") or {}
+    print("장치 감지: present=%s com=%s needs_driver=%s name=%s"
+          % (dev.get("present"), dev.get("com"), dev.get("needs_driver"), dev.get("name")))
+    print("PnP 전체 개수: %s" % d.get("pnp_count"))
+    print("레지스트리 COM: %s" % (", ".join(d.get("registry_com") or []) or "(없음)"))
+    coms = d.get("com_ports") or []
+    print("COM 포트 %d개:" % len(coms))
+    for c in coms:
+        print("  %s  %s  [%s]" % (c.get("com"), c.get("name"), c.get("pnpid")))
+    pm3s = d.get("pm3_devices") or []
+    print("PM3 로 보이는 장치 %d개:" % len(pm3s))
+    for p in pm3s:
+        print("  %s  errcode=%s  [%s]" % (p.get("name"), p.get("errcode"), p.get("pnpid")))
+    if not pm3s:
+        print("  → PM3 장치가 안 보입니다. USB 케이블(데이터선)·포트를 바꿔 꽂아 보세요.")
+        print("    위 'COM 포트' 목록에 프록시마크로 짐작되는 게 있으면 그 번호를 알려 주세요.")
+    return 0
+
+
 def cmd_import(cfg: Config, file: str) -> int:
     from . import dump as D
     src = Path(file)
@@ -179,6 +207,8 @@ def main(argv: list[str] | None = None) -> int:
             return cmd_setup(cfg, args.flash, args.no_flash)
         if cmd == "flash":
             return cmd_flash(cfg)
+        if cmd == "diag":
+            return cmd_diag(cfg)
         if cmd == "info":
             return cmd_info(cfg)
         if cmd == "update":

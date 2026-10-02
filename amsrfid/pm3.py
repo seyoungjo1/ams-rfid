@@ -204,44 +204,7 @@ def find_client(configured: str | None = None, deep: bool = False) -> str:
 _PM3_USB_IDS = (("9AC4", "4B8F"), ("2D2D", "504D"), ("502D", "502D"))
 
 
-def _win_detect_port() -> str | None:
-    """공식 pm3 래퍼와 똑같은 방식: Win32_SerialPort 에서 PM3 VID:PID 로 COM 을 찾는다."""
-    cond = " -or ".join("$_.PNPDeviceID -like '*VID_%s&PID_%s*'" % (v, p) for v, p in _PM3_USB_IDS)
-    ps = ("Get-CimInstance -ClassName Win32_SerialPort | "
-          "Where-Object {%s} | Select-Object -ExpandProperty DeviceID" % cond)
-    for exe in ("powershell", "pwsh"):
-        try:
-            out = subprocess.run(
-                [exe, "-NoProfile", "-NonInteractive", "-Command", ps],
-                capture_output=True, timeout=15,
-            )
-        except (OSError, subprocess.SubprocessError):
-            continue
-        for line in (out.stdout or b"").decode("utf-8", "replace").splitlines():
-            m = re.search(r"(COM\d+)", line.strip(), re.I)
-            if m:
-                return m.group(1).upper()
-        return None
-    return None
-
-
-def detect_port() -> str | None:
-    """Proxmark3 가 꽂힌 시리얼 포트를 공식 방식으로 자동 탐지한다. 못 찾으면 None."""
-    if os.name == "nt":
-        return _win_detect_port()
-    # 리눅스/맥: 공식 pm3 래퍼는 udev 가 만든 /dev/pm3-* 를 먼저 보고, 없으면 ACM/usbmodem 을 본다.
-    for pat in ("/dev/pm3-*", "/dev/ttyACM*", "/dev/tty.usbmodem*", "/dev/cu.usbmodem*", "/dev/ttyUSB*"):
-        hits = sorted(glob.glob(pat))
-        if hits:
-            return hits[0]
-    return None
-
-
-def _auto_port() -> str | None:
-    return detect_port()
-
-
-def _ps_run(script: str, timeout: float = 20):
+def _ps_run(script: str, timeout: float = 25):
     for exe in ("powershell", "pwsh"):
         try:
             return subprocess.run(
@@ -253,8 +216,57 @@ def _ps_run(script: str, timeout: float = 20):
     return None
 
 
+def _pm3_match(pnpid: str) -> bool:
+    u = (pnpid or "").upper()
+    return any(("VID_" + v) in u and ("PID_" + p) in u for v, p in _PM3_USB_IDS)
+
+
+def _com_of(name: str) -> str | None:
+    m = re.search(r"\((COM\d+)\)", name or "", re.I)
+    return m.group(1).upper() if m else None
+
+
+def _win_scan() -> list[tuple[str, str, str]]:
+    """윈도우의 모든 PnP 장치를 한 번에 긁어 (name, errcode, pnpid) 로 돌려준다.
+
+    필터링은 PowerShell 이 아니라 파이썬에서 한다 — 따옴표/& 때문에 쿼리가 깨지는 일을 막는다.
+    Win32_SerialPort 는 USB CDC(프록시마크 같은) 포트를 종종 누락하므로 쓰지 않고,
+    더 완전한 Win32_PnPEntity 를 쓴다.
+    """
+    ps = ("Get-CimInstance Win32_PnPEntity | ForEach-Object { "
+          "\"$($_.Name)|$($_.ConfigManagerErrorCode)|$($_.PNPDeviceID)\" }")
+    out = _ps_run(ps, timeout=30)
+    rows: list[tuple[str, str, str]] = []
+    if out is None:
+        return rows
+    for line in (out.stdout or b"").decode("utf-8", "replace").splitlines():
+        parts = line.split("|")
+        if len(parts) >= 3:
+            rows.append((parts[0].strip(), parts[1].strip(), "|".join(parts[2:]).strip()))
+    return rows
+
+
+def _reg_serialcomm() -> list[str]:
+    """레지스트리에서 COM 포트 목록을 읽는다(PowerShell 이 없을 때의 대비). 이름만 나온다."""
+    if os.name != "nt":
+        return []
+    try:
+        out = subprocess.run(
+            ["reg", "query", r"HKLM\HARDWARE\DEVICEMAP\SERIALCOMM"],
+            capture_output=True, timeout=10,
+        )
+    except (OSError, subprocess.SubprocessError):
+        return []
+    coms = []
+    for line in (out.stdout or b"").decode("utf-8", "replace").splitlines():
+        m = re.search(r"(COM\d+)", line)
+        if m:
+            coms.append(m.group(1).upper())
+    return sorted(set(coms))
+
+
 def detect_device() -> dict:
-    """꽂힌 Proxmark3 를 '드라이버 유무까지' 본다(Win32_PnPEntity 전체에서 VID:PID 로).
+    """꽂힌 Proxmark3 를 '드라이버 유무까지' 본다.
 
     돌려주는 것: {present, com, needs_driver, name, status}
       · present      : PM3 USB 장치가 보이는가(드라이버 없어도)
@@ -267,29 +279,67 @@ def detect_device() -> dict:
         res["present"] = bool(p)
         res["com"] = p
         return res
-    cond = " -or ".join("$_.PNPDeviceID -like '*VID_%s&PID_%s*'" % (v, p) for v, p in _PM3_USB_IDS)
-    ps = ("Get-CimInstance Win32_PnPEntity | Where-Object {%s} | "
-          "ForEach-Object { \"$($_.Name)|$($_.ConfigManagerErrorCode)|$($_.PNPDeviceID)\" }" % cond)
-    out = _ps_run(ps)
-    if out is None:
-        return res
-    for line in (out.stdout or b"").decode("utf-8", "replace").splitlines():
-        line = line.strip()
-        if not line:
-            continue
-        name, _, rest = line.partition("|")
-        errcode, _, _pnp = rest.partition("|")
+    rows = _win_scan()
+    # 1) VID:PID 가 PM3 인 장치
+    pm3 = [(n, e, p) for (n, e, p) in rows if _pm3_match(p)]
+    # 2) 이름에 proxmark 가 들어간 장치도 포함(혹시 VID 가 다른 변종)
+    for (n, e, p) in rows:
+        if ("proxmark" in n.lower() or "pm3" in n.lower()) and (n, e, p) not in pm3:
+            pm3.append((n, e, p))
+    if pm3:
         res["present"] = True
-        res["name"] = name.strip()
-        res["status"] = errcode.strip()
-        m = re.search(r"\((COM\d+)\)", name, re.I)
-        if m:
-            res["com"] = m.group(1).upper()
-            res["needs_driver"] = False
-            return res                     # COM 포트까지 있으면 완성 — 바로 반환
-        # COM 이 없거나 오류코드 28(드라이버 없음)이면 드라이버 필요
-        res["needs_driver"] = True
+        res["name"] = pm3[0][0]
+        res["status"] = pm3[0][1]
+        for (n, e, p) in pm3:                 # COM 포트가 붙은 것이 있으면 그게 완성
+            com = _com_of(n)
+            if com:
+                res["com"] = com
+                return res
+        res["needs_driver"] = True            # 장치는 있는데 COM 이 없다 → 드라이버 필요
     return res
+
+
+def detect_port() -> str | None:
+    """Proxmark3 가 꽂힌 시리얼 포트를 자동 탐지한다. 못 찾으면 None."""
+    if os.name == "nt":
+        return detect_device().get("com")
+    # 리눅스/맥: 공식 pm3 래퍼는 udev 가 만든 /dev/pm3-* 를 먼저 보고, 없으면 ACM/usbmodem 을 본다.
+    for pat in ("/dev/pm3-*", "/dev/ttyACM*", "/dev/tty.usbmodem*", "/dev/cu.usbmodem*", "/dev/ttyUSB*"):
+        hits = sorted(glob.glob(pat))
+        if hits:
+            return hits[0]
+    return None
+
+
+def _auto_port() -> str | None:
+    return detect_port()
+
+
+def diagnostics() -> dict:
+    """진단용 — 도구가 '지금 무엇을 보는지' 전부 모아 돌려준다(USB 인식 문제 추적)."""
+    d: dict = {"os": os.name, "platform": sys.platform, "python": sys.version.split()[0]}
+    if os.name == "nt":
+        d["powershell"] = _ps_run("'ok'") is not None
+        rows = _win_scan()
+        d["pnp_count"] = len(rows)
+        d["com_ports"] = [{"com": _com_of(n), "name": n, "pnpid": p}
+                          for (n, e, p) in rows if _com_of(n)]
+        d["pm3_devices"] = [{"name": n, "errcode": e, "pnpid": p}
+                            for (n, e, p) in rows if _pm3_match(p) or "proxmark" in n.lower()]
+        d["registry_com"] = _reg_serialcomm()
+    else:
+        d["powershell"] = False
+        d["com_ports"] = [{"com": None, "name": g, "pnpid": g}
+                          for pat in ("/dev/ttyACM*", "/dev/pm3-*", "/dev/ttyUSB*")
+                          for g in sorted(glob.glob(pat))]
+        d["pm3_devices"] = []
+        d["registry_com"] = []
+    d["device"] = detect_device()
+    try:
+        d["client"] = find_client(deep=True)
+    except DeviceNotFound:
+        d["client"] = None
+    return d
 
 
 def default_inf() -> Path:

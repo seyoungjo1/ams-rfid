@@ -96,6 +96,10 @@ class App:
         self._dev_at = 0           # 상태 캐시를 비워 다음 status 에서 다시 본다
         return {"ok": ok, "message": msg}
 
+    def diag(self) -> dict[str, Any]:
+        from .pm3 import diagnostics
+        return diagnostics()
+
     def dumps(self) -> list[dict[str, Any]]:
         out = self.cfg.out_path
         if not out.is_dir():
@@ -250,6 +254,8 @@ def _make_handler(app: App):
                 return self._send_json(app.status())
             if path == "/api/dumps":
                 return self._send_json(app.dumps())
+            if path == "/api/diag":
+                return self._send_json(app.diag())
             if path == "/api/analyze":
                 q = self.path.split("?", 1)
                 name = ""

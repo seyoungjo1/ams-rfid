@@ -92,6 +92,24 @@ def test_detect_device_shape():
         assert k in dev
 
 
+def test_pm3_match_vidpid():
+    from amsrfid import pm3
+    assert pm3._pm3_match(r"USB\VID_502D&PID_502D\5&abc")      # Proxmark3 Easy
+    assert pm3._pm3_match(r"USB\VID_9AC4&PID_4B8F\6")          # 정품
+    assert pm3._pm3_match(r"usb\vid_2d2d&pid_504d\x")          # 소문자도
+    assert not pm3._pm3_match(r"USB\VID_1234&PID_5678\x")      # 무관한 장치
+    assert pm3._com_of("Proxmark3 (easy?) (COM7)") == "COM7"
+    assert pm3._com_of("something no com") is None
+
+
+def test_diagnostics_shape():
+    from amsrfid import pm3
+    d = pm3.diagnostics()
+    for k in ("os", "com_ports", "pm3_devices", "device", "client"):
+        assert k in d
+    assert isinstance(d["com_ports"], list)
+
+
 def test_install_driver_returns_tuple():
     from amsrfid import pm3
     ok, msg = pm3.install_driver()
