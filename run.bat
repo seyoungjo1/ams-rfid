@@ -30,17 +30,14 @@ if not defined PY (
 rem --- tell the updater which .bat is currently running (it cannot overwrite itself) ---
 set "AMSRFID_RUNNING_BAT=%~f0"
 
-rem --- ensure pyserial (proven port auto-detect, same as Proxmark3GUI/ProxSpace) ---
+rem --- ensure pyserial (read-only serial port enumeration; same lib Proxmark3GUI uses) ---
 %PY% -c "import serial.tools.list_ports" 2>nul || %PY% -m pip install -q pyserial 2>nul
 
 rem --- auto-update when token.txt is present ---
 %PY% -m amsrfid update
 
-rem --- one-touch setup: driver (UAC only if needed) + locate client + firmware check.
-rem     Skips whatever is already in place. Harmless if the device is not plugged yet. ---
-%PY% -m amsrfid setup --no-flash
-
-rem --- launch: web UI by default; pass args through otherwise (auto/clone/menu/info) ---
+rem --- launch the local web UI ONLY. No driver install, no flashing, no drive scan at startup.
+rem     Anything that touches the system (driver/firmware) is a manual button inside the UI. ---
 if "%~1"=="" (
   %PY% -m amsrfid ui
 ) else (

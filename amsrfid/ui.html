@@ -92,17 +92,20 @@
   <div class="banner" id="driverBanner" style="display:none;background:color-mix(in srgb,var(--bad) 13%,transparent);border-color:color-mix(in srgb,var(--bad) 45%,var(--line))">
     <div>🔌</div>
     <div style="flex:1">
-      <b id="driverMsg">Proxmark3 장치는 보이는데 드라이버가 없어 COM 포트가 안 잡힙니다.</b>
-      아래 버튼을 누르면 공식 드라이버를 설치합니다(관리자 권한 UAC 창이 뜹니다).
+      <b id="driverMsg">장치는 보이는데 COM 포트가 없습니다.</b>
+      대개 <b>충전 전용 USB 케이블</b>이 원인입니다 — 데이터선 케이블 + 본체 USB 포트로 바꿔
+      꽂아 보세요. 그래도 안 되면 아래 버튼으로 드라이버를 등록(스토어 등록만, 안전)한 뒤 장치를
+      다시 꽂으세요.
     </div>
-    <button class="btn sm" id="btnDriver" style="align-self:center">드라이버 설치</button>
+    <button class="btn sm" id="btnDriver" style="align-self:center">드라이버 등록</button>
   </div>
 
   <div class="card">
-    <h2>처음 한 번 — 전체 설정</h2>
-    <button class="btn" id="btnSetup" style="width:100%">⚙️ 드라이버·클라이언트·펌웨어 한 번에 설정</button>
-    <div class="hint">Proxmark3 를 꽂고 누르면 드라이버 설치(필요시 UAC) → 클라이언트 찾기 →
-      펌웨어 확인까지 알아서 합니다. 이미 다 돼 있으면 건너뜁니다.</div>
+    <h2>준비 상태 확인</h2>
+    <button class="btn" id="btnSetup" style="width:100%">🔎 장치·클라이언트 상태 확인</button>
+    <div class="hint">Proxmark3 를 꽂고 누르면 포트(pyserial)·클라이언트를 찾아 준비됐는지 봅니다.
+      <b>시스템은 건드리지 않습니다</b>(드라이버 자동설치·펌웨어 플래싱 안 함). 드라이버가 정말
+      필요하면 아래 안내/버튼으로 직접, 펌웨어는 <code>flash</code> 명령으로 직접 하세요.</div>
   </div>
 
   <div class="card">
@@ -341,14 +344,14 @@
     }).catch(function(){ box.textContent = "진단 실패(서버 응답 없음)"; });
   };
   $("btnDriver").onclick = function(){
-    var btn = $("btnDriver"); btn.disabled = true; btn.textContent = "설치 중… (UAC 창 확인)";
+    var btn = $("btnDriver"); btn.disabled = true; btn.textContent = "등록 중… (UAC 확인)";
     api("POST","/api/driver").then(function(res){
-      btn.disabled = false; btn.textContent = "드라이버 설치";
+      btn.disabled = false; btn.textContent = "드라이버 등록";
       var box = $("analysis"); box.style.display="block";
       box.textContent = (res && res.message) || "완료";
       loadStatus();
     }).catch(function(){
-      btn.disabled = false; btn.textContent = "드라이버 설치";
+      btn.disabled = false; btn.textContent = "드라이버 등록";
     });
   };
 

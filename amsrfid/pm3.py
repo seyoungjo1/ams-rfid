@@ -409,29 +409,34 @@ def default_inf() -> Path:
 
 
 def install_driver(inf: str | Path | None = None) -> tuple[bool, str]:
-    """공식 proxmark3.inf 를 pnputil 로 설치한다(관리자 권한 UAC). Windows 전용."""
+    """드라이버를 **안전하게** 등록한다 — 사용자가 직접 눌렀을 때만 호출할 것(자동 호출 금지).
+
+    과거 `pnputil /add-driver ... /install` 은 **살아 있는 usbser 드라이버를 강제로 다시
+    설치**하면서 시스템 오류(BSOD)를 낸 적이 있다. 그래서 `/install` 을 떼고 **드라이버
+    스토어에 등록만**(`/add-driver`) 한다 — 살아 있는 장치를 건드리지 않는다. 등록 후 장치를
+    뽑았다 다시 꽂으면 Windows 가 알아서 붙인다. Windows 10/11 은 대개 이것도 필요 없다.
+    """
     if os.name != "nt":
         return (False, "드라이버 설치는 Windows 에서만 필요합니다.")
     infp = Path(inf) if inf else default_inf()
     if not infp.is_file():
         return (False, "드라이버 파일을 찾지 못했습니다: %s" % infp)
-    # pnputil 을 관리자 권한으로 띄운다(UAC 창이 뜬다). 끝날 때까지 기다려 종료코드를 받는다.
+    # /install 없이 등록만. 관리자 권한(UAC)으로 pnputil 을 띄우고 끝날 때까지 기다린다.
     ps = (
-        "$p = Start-Process pnputil -ArgumentList '/add-driver','%s','/install' "
+        "$p = Start-Process pnputil -ArgumentList '/add-driver','%s' "
         "-Verb RunAs -Wait -PassThru; $p.ExitCode" % str(infp)
     )
-    out = _ps_run(ps, timeout=180)
+    out = _ps_run(ps, timeout=120)
     if out is None:
         return (False, "PowerShell 을 실행하지 못했습니다.")
     txt = (out.stdout or b"").decode("utf-8", "replace").strip()
     err = (out.stderr or b"").decode("utf-8", "replace").strip()
     code = txt.splitlines()[-1].strip() if txt else ""
-    # pnputil: 0=성공, 3010/259=성공(재부팅/대기), 1=사용자가 UAC 취소 등
     if code in ("0", "3010", "259"):
-        return (True, "드라이버 설치 완료(코드 %s). 장치를 다시 꽂거나 잠시 기다리면 COM 포트가 잡힙니다." % code)
+        return (True, "드라이버를 등록했습니다. **장치를 뽑았다 다시 꽂으면** COM 포트가 잡힙니다.")
     if "canceled" in err.lower() or "취소" in err or code == "":
-        return (False, "드라이버 설치가 취소되었거나 관리자 권한을 얻지 못했습니다(UAC 에서 '예'를 눌러 주세요).")
-    return (False, "드라이버 설치 실패(코드 %s). %s" % (code or "?", err[-300:]))
+        return (False, "취소되었거나 관리자 권한을 못 얻었습니다(UAC 에서 '예'). 보통은 케이블 문제가 더 흔합니다.")
+    return (False, "드라이버 등록 실패(코드 %s). 대개 '충전 전용 케이블'이 원인입니다. %s" % (code or "?", err[-200:]))
 
 
 def find_firmware_images(client: str) -> dict:

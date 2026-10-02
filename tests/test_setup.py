@@ -30,17 +30,18 @@ def test_bootstrap_with_client_ready(tmp_path, monkeypatch):
     assert res["client"] == fake
 
 
-def test_ensure_driver_installs_when_needed(tmp_path, monkeypatch):
+def test_ensure_driver_never_autoinstalls(tmp_path, monkeypatch):
+    # 안전: ensure_driver 는 어떤 경우에도 install_driver 를 자동 호출하지 않는다(상태만 보고).
     called = {}
     monkeypatch.setattr(P, "detect_device", lambda: {"present": True, "com": None, "needs_driver": True})
 
-    def fake_install(*a, **k):
+    def boom(*a, **k):
         called["yes"] = True
         return (True, "설치됨")
 
-    monkeypatch.setattr(P, "install_driver", fake_install)
+    monkeypatch.setattr(P, "install_driver", boom)
     assert setup.ensure_driver(echo=lambda *a: None) is True
-    assert called.get("yes") is True
+    assert "yes" not in called          # 절대 자동 설치하지 않음
 
 
 def test_find_firmware_images_shape(tmp_path):
