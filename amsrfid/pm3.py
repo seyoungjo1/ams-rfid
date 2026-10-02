@@ -32,14 +32,29 @@ class DeviceNotFound(Pm3Error):
     pass
 
 
-# 흔한 설치 위치 — 윈도우(ProxSpace)와 리눅스/맥을 함께 본다.
+# 흔한 설치 위치 — 윈도우(ProxSpace/릴리스)와 리눅스/맥을 함께 본다.
 _WIN_GLOBS = [
     r"C:\ProxSpace\pm3\pm3.bat",
     r"C:\ProxSpace\pm3\proxmark3.exe",
-    r"C:\Program Files\proxmark3\pm3.bat",
-    r"C:\Program Files\proxmark3\proxmark3.exe",
-    r"C:\Program Files*\proxmark3\*\pm3.bat",
+    r"C:\ProxSpace\**\pm3.bat",
+    r"C:\ProxSpace\**\proxmark3.exe",
+    r"C:\Program Files*\proxmark3\**\pm3.bat",
+    r"C:\Program Files*\proxmark3\**\proxmark3.exe",
+    r"C:\proxmark3\**\pm3.bat",
+    r"C:\proxmark3\**\proxmark3.exe",
+    r"C:\tools\**\proxmark3.exe",
 ]
+
+
+def _win_user_globs() -> list[str]:
+    """사용자 폴더·다운로드 밑에 풀어 둔 릴리스도 본다."""
+    pats: list[str] = []
+    for base in filter(None, [os.environ.get("USERPROFILE"), os.environ.get("LOCALAPPDATA")]):
+        pats += [
+            base + r"\**\pm3.bat",
+            base + r"\**\proxmark3.exe",
+        ]
+    return pats
 _NIX_CANDIDATES = [
     "/usr/local/bin/pm3",
     "/usr/bin/pm3",
@@ -49,42 +64,88 @@ _NIX_CANDIDATES = [
 _NAMES = ("pm3", "pm3.bat", "proxmark3", "proxmark3.exe")
 
 
+def _root() -> Path:
+    return Path(__file__).resolve().parent.parent
+
+
+def _path_txt() -> str:
+    """pm3_path.txt 한 줄로 경로를 지정하는 가장 쉬운 방법(비전문가용)."""
+    try:
+        return (_root() / "pm3_path.txt").read_text(encoding="utf-8-sig").strip()
+    except OSError:
+        return ""
+
+
 def find_client(configured: str | None = None) -> str:
     """pm3 실행 파일 경로를 돌려준다. 못 찾으면 DeviceNotFound."""
     cands: list[str] = []
-    if configured:
-        cands.append(configured)
-    env = os.environ.get("AMSRFID_PM3")
-    if env:
-        cands.append(env)
+    for c in (configured, os.environ.get("AMSRFID_PM3"), _path_txt()):
+        if c:
+            cands.append(c.strip().strip('"'))
     for name in _NAMES:
         found = shutil.which(name)
         if found:
             cands.append(found)
     if os.name == "nt":
-        for pat in _WIN_GLOBS:
-            cands.extend(sorted(glob.glob(pat)))
+        for pat in _WIN_GLOBS + _win_user_globs():
+            try:
+                cands.extend(sorted(glob.glob(pat, recursive=True)))
+            except OSError:
+                pass
     else:
         cands.extend(_NIX_CANDIDATES)
     for c in cands:
         if c and Path(c).is_file():
             return c
     raise DeviceNotFound(
-        "Proxmark3 클라이언트(pm3)를 찾지 못했습니다. 설치했는지 확인하거나, "
-        "amsrfid.toml 의 pm3_path 또는 환경변수 AMSRFID_PM3 로 경로를 알려 주세요."
+        "Proxmark3 클라이언트(pm3)를 찾지 못했습니다. 다음 중 하나로 경로를 알려 주세요:\n"
+        "  · 폴더에 pm3_path.txt 를 만들고 pm3.bat(또는 proxmark3.exe) 전체 경로를 한 줄로 적기\n"
+        "  · amsrfid.toml 의 pm3_path = \"...\"\n"
+        "  · 환경변수 AMSRFID_PM3\n"
+        "예) C:\\ProxSpace\\pm3\\pm3.bat  또는  C:\\proxmark3\\proxmark3.exe"
     )
 
 
-def _auto_port() -> str | None:
-    """pm3 래퍼가 아닌 날것 proxmark3 를 쓸 때 붙일 시리얼 포트를 추정한다."""
-    if os.name == "nt":
-        # 윈도우는 COM 번호를 확실히 알기 어렵다 — pm3 래퍼가 처리하게 둔다.
+# Proxmark3 의 공식 USB VID:PID (RRG proxmark3 driver/proxmark3.inf, pm3 래퍼, PM3_USB_IDS).
+#   9AC4:4B8F = 정품(proxmark.org) · 2D2D:504D = 구형 부트로더 · 502D:502D = PM3 Easy
+_PM3_USB_IDS = (("9AC4", "4B8F"), ("2D2D", "504D"), ("502D", "502D"))
+
+
+def _win_detect_port() -> str | None:
+    """공식 pm3 래퍼와 똑같은 방식: Win32_SerialPort 에서 PM3 VID:PID 로 COM 을 찾는다."""
+    cond = " -or ".join("$_.PNPDeviceID -like '*VID_%s&PID_%s*'" % (v, p) for v, p in _PM3_USB_IDS)
+    ps = ("Get-CimInstance -ClassName Win32_SerialPort | "
+          "Where-Object {%s} | Select-Object -ExpandProperty DeviceID" % cond)
+    for exe in ("powershell", "pwsh"):
+        try:
+            out = subprocess.run(
+                [exe, "-NoProfile", "-NonInteractive", "-Command", ps],
+                capture_output=True, timeout=15,
+            )
+        except (OSError, subprocess.SubprocessError):
+            continue
+        for line in (out.stdout or b"").decode("utf-8", "replace").splitlines():
+            m = re.search(r"(COM\d+)", line.strip(), re.I)
+            if m:
+                return m.group(1).upper()
         return None
-    for pat in ("/dev/ttyACM*", "/dev/ttyUSB*", "/dev/tty.usbmodem*", "/dev/cu.usbmodem*"):
+    return None
+
+
+def detect_port() -> str | None:
+    """Proxmark3 가 꽂힌 시리얼 포트를 공식 방식으로 자동 탐지한다. 못 찾으면 None."""
+    if os.name == "nt":
+        return _win_detect_port()
+    # 리눅스/맥: 공식 pm3 래퍼는 udev 가 만든 /dev/pm3-* 를 먼저 보고, 없으면 ACM/usbmodem 을 본다.
+    for pat in ("/dev/pm3-*", "/dev/ttyACM*", "/dev/tty.usbmodem*", "/dev/cu.usbmodem*", "/dev/ttyUSB*"):
         hits = sorted(glob.glob(pat))
         if hits:
             return hits[0]
     return None
+
+
+def _auto_port() -> str | None:
+    return detect_port()
 
 
 @dataclass

@@ -107,12 +107,16 @@
     <div class="row" style="margin-bottom:10px">
       <h2 style="margin:0">저장된 덤프 (.bin)</h2>
       <div class="spacer"></div>
+      <button class="btn sm" id="btnImport">📂 불러오기</button>
+      <input type="file" id="fileInput" accept=".bin" style="display:none">
       <button class="btn sm" id="btnRefresh">새로고침</button>
       <button class="btn sm" id="btnUpdate">업데이트 확인</button>
     </div>
     <div class="dumps" id="dumps"><div class="empty">불러오는 중…</div></div>
-    <div class="hint">복제는 대상 카드를 올린 상태에서 누르세요 — 매직카드는 UID 까지,
-      일반/정품은 키가 맞는 블록을 되씁니다.</div>
+    <pre class="log" id="analysis" style="display:none;margin-top:10px"></pre>
+    <div class="hint">덤프 이름을 누르면 <b>조회</b>(블록0·키·값·복제가능)합니다.
+      이미 만들어 둔 .bin 은 「불러오기」로 열면 됩니다.
+      복제는 대상 카드를 올린 상태에서 누르세요 — 매직카드는 UID 까지, 일반/정품은 키가 맞는 블록을 되씁니다.</div>
   </div>
 
   <footer>127.0.0.1 로컬 전용 · 이 창을 닫으면 UI 가 꺼집니다</footer>
@@ -161,8 +165,10 @@
       $("ver").textContent = "v" + (s.version || "?");
       var ok = !!s.pm3;
       $("pm3dot").className = "dot " + (ok ? "ok" : "no");
-      $("pm3txt").textContent = ok ? "pm3 준비됨" : "pm3 없음";
-      $("pm3txt").title = ok ? s.pm3 : (s.pm3_error || "");
+      var label = ok ? "pm3 준비됨" : "pm3 없음";
+      if (s.port) label += " · " + s.port;      // 꽂힌 포트 자동 탐지
+      $("pm3txt").textContent = label;
+      $("pm3txt").title = ok ? (s.pm3 + (s.port ? "  @" + s.port : "")) : (s.pm3_error || "");
     }).catch(function(){
       $("pm3dot").className = "dot no"; $("pm3txt").textContent = "서버 응답 없음";
     });
@@ -176,11 +182,15 @@
       list.forEach(function(d){
         var row = document.createElement("div"); row.className = "dump";
         var name = document.createElement("div"); name.className = "name"; name.textContent = d.name;
+        name.style.cursor = "pointer"; name.title = "눌러서 조회";
+        name.onclick = function(){ analyzeDump(d.name); };
         var size = document.createElement("div"); size.className = "size"; size.textContent = human(d.size);
-        var btn = document.createElement("button"); btn.className = "btn sm btnClone"; btn.textContent = "대상 카드에 복제";
+        var view = document.createElement("button"); view.className = "btn sm"; view.textContent = "조회";
+        view.onclick = function(){ analyzeDump(d.name); };
+        var btn = document.createElement("button"); btn.className = "btn sm btnClone"; btn.textContent = "복제";
         btn.disabled = busy;
         btn.onclick = function(){ cloneDump(d.name); };
-        row.appendChild(name); row.appendChild(size); row.appendChild(btn);
+        row.appendChild(name); row.appendChild(size); row.appendChild(view); row.appendChild(btn);
         box.appendChild(row);
       });
     });
@@ -234,9 +244,45 @@
     run("clone", function(){ return api("POST","/api/clone",{name:name}); });
   }
 
+  function analyzeDump(name){
+    var box = $("analysis");
+    box.style.display = "block";
+    box.textContent = "조회 중… (" + name + ")";
+    api("GET","/api/analyze?name=" + encodeURIComponent(name)).then(function(a){
+      if(a && a.ok){ box.textContent = a.report || "(내용 없음)"; }
+      else { box.textContent = "읽지 못했습니다: " + ((a && a.error) || ""); }
+    }).catch(function(){ box.textContent = "조회 실패(서버 응답 없음)"; });
+  }
+
+  function importFile(file){
+    if(!file) return;
+    var reader = new FileReader();
+    reader.onload = function(){
+      fetch("/api/import?name=" + encodeURIComponent(file.name), {
+        method:"POST",
+        headers:{"Content-Type":"application/octet-stream"},
+        body: reader.result
+      }).then(function(r){ return r.json(); }).then(function(res){
+        if(res && res.ok){
+          loadDumps();
+          analyzeDump(res.name);
+        } else {
+          var box = $("analysis"); box.style.display="block";
+          box.textContent = "불러오기 실패: " + ((res && res.error) || "");
+        }
+      }).catch(function(){
+        var box = $("analysis"); box.style.display="block";
+        box.textContent = "불러오기 실패(서버 응답 없음)";
+      });
+    };
+    reader.readAsArrayBuffer(file);
+  }
+
   $("btnAuto").onclick = function(){ run("auto", function(){ return api("POST","/api/auto"); }); };
   $("btnUpdate").onclick = function(){ run("update", function(){ return api("POST","/api/update"); }); };
   $("btnRefresh").onclick = loadDumps;
+  $("btnImport").onclick = function(){ $("fileInput").click(); };
+  $("fileInput").onchange = function(e){ importFile(e.target.files[0]); e.target.value = ""; };
 
   loadStatus(); loadDumps();
   setInterval(loadStatus, 4000);

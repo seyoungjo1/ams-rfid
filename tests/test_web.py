@@ -47,6 +47,42 @@ def test_status_has_version(tmp_path):
     assert "version" in s
     # pm3 가 깔려 있지 않은 CI 에서는 pm3=None 이어야 한다(예외가 아니라)
     assert "pm3" in s
+    assert "port" in s          # 자동 탐지 포트 필드(없으면 None)
+
+
+def test_import_bin_valid_and_invalid(tmp_path):
+    app = web.App(_cfg(tmp_path))
+    ok = app.import_bin("my dump.bin", b"\x00" * 1024)
+    assert ok["ok"] is True
+    assert ok["name"].endswith(".bin")
+    assert (app.cfg.out_path / ok["name"]).is_file()
+    bad = app.import_bin("x.bin", b"\x00" * 100)
+    assert bad["ok"] is False
+
+
+def test_analyze_dump_reports(tmp_path):
+    from amsrfid import dump as D
+    app = web.App(_cfg(tmp_path))
+    d = D.Dump()
+    d.data[0:4] = bytes.fromhex("3359C8E4")
+    d.data[60 * 16 : 60 * 16 + 16] = bytes.fromhex("600907924052340020201620202020CC")
+    tb = D.trailer_block(15) * 16
+    d.data[tb : tb + 6] = bytes.fromhex("23C7F6BAE3EB")
+    d.data[tb + 10 : tb + 16] = bytes.fromhex("23C7F6BAE3EB")
+    app.import_bin("real.bin", bytes(d.data))
+    a = app.analyze_dump("real.bin")
+    assert a["ok"] is True
+    assert a["custom_sectors"] == 1
+    assert "report" in a
+    miss = app.analyze_dump("nope.bin")
+    assert miss["ok"] is False
+
+
+def test_detect_port_no_crash():
+    from amsrfid import pm3
+    # 하드웨어가 없어도 예외 없이 None/str 을 돌려줘야 한다
+    p = pm3.detect_port()
+    assert p is None or isinstance(p, str)
 
 
 def test_update_job_runs_in_thread(tmp_path, monkeypatch):

@@ -12,7 +12,9 @@
 from __future__ import annotations
 
 import argparse
+import shutil
 import sys
+from pathlib import Path
 
 from . import __version__, update, workflow
 from .config import Config
@@ -38,6 +40,9 @@ def build_parser() -> argparse.ArgumentParser:
 
     pa = sub.add_parser("analyze", help="저장된/불러온 .bin 을 조회(블록0·키·값·복제가능)")
     pa.add_argument("file", help="조회할 .bin 경로")
+
+    pi = sub.add_parser("import", help="외부 .bin 을 out 폴더로 불러오기(+조회)")
+    pi.add_argument("file", help="불러올 .bin 경로")
 
     sub.add_parser("info", help="카드 종류만 확인")
 
@@ -81,6 +86,23 @@ def cmd_analyze(cfg: Config, file: str) -> int:
     return 0
 
 
+def cmd_import(cfg: Config, file: str) -> int:
+    from . import dump as D
+    src = Path(file)
+    try:
+        D.Dump.load(src)                       # 크기/형식 먼저 확인
+    except ValueError as e:
+        print("불러오지 못했습니다: %s" % e)
+        return 1
+    cfg.out_path.mkdir(parents=True, exist_ok=True)
+    dest = cfg.out_path / src.name
+    if src.resolve() != dest.resolve():
+        shutil.copyfile(src, dest)
+    print("불러왔습니다: %s" % dest)
+    workflow.analyze_bin(dest, print)
+    return 0
+
+
 def cmd_info(cfg: Config) -> int:
     pm3 = Pm3.locate(cfg.pm3_path or None, cfg.port or None, cfg.out_path)
     workflow.wait_for_device(pm3, cfg, print)
@@ -108,6 +130,8 @@ def main(argv: list[str] | None = None) -> int:
             return cmd_clone(cfg, args.src, key=args.key, force_placeholder=args.force_placeholder)
         if cmd == "analyze":
             return cmd_analyze(cfg, args.file)
+        if cmd == "import":
+            return cmd_import(cfg, args.file)
         if cmd == "info":
             return cmd_info(cfg)
         if cmd == "update":

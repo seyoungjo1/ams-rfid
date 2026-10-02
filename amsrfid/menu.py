@@ -43,7 +43,8 @@ def run(cfg: Config | None = None) -> int:
         print(" 1) 원터치 읽기 — 꽂고 올리면 키 복구 후 .bin 저장")
         print(" 2) 복제 — 읽은 .bin 을 대상 카드에 쓰기")
         print(" 3) 저장된 .bin 보기")
-        print(" 4) 업데이트 확인")
+        print(" 4) 불러오기/조회 — .bin 열어서 블록0·키·값·복제가능 보기")
+        print(" 5) 업데이트 확인")
         print(" 0) 나가기")
         choice = input("골라 주세요: ").strip()
 
@@ -72,11 +73,26 @@ def run(cfg: Config | None = None) -> int:
                 for p in bins:
                     print("  %s  (%d바이트)" % (p.name, p.stat().st_size))
             elif choice == "4":
+                path = input("불러올 .bin 경로(저장된 것은 이름만, 취소는 Enter): ").strip().strip('"')
+                if not path:
+                    continue
+                src = Path(path)
+                if not src.is_file():
+                    src = cfg.out_path / path          # 이름만 준 경우 out 폴더에서 찾는다
+                if not src.is_file():
+                    print("파일을 찾지 못했습니다: %s" % path)
+                    continue
+                from . import workflow
+                try:
+                    workflow.analyze_bin(src, print)
+                except ValueError as e:
+                    print("읽지 못했습니다: %s" % e)
+            elif choice == "5":
                 update.run(check_only=False, root=cfg.root, echo=print)
             elif choice == "0":
                 return 0
             else:
-                print("1~4 또는 0 을 눌러 주세요.")
+                print("1~5 또는 0 을 눌러 주세요.")
         except Pm3Error as e:
             print("\n문제가 생겼습니다: %s" % e)
         except KeyboardInterrupt:

@@ -18,7 +18,7 @@ from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 from pathlib import Path
 from typing import Any, Callable
 
-from . import __version__, update, workflow
+from . import __version__, dump as D, update, workflow
 from .config import Config
 from .pm3 import Pm3, Pm3Error
 
@@ -67,6 +67,8 @@ class App:
     # -- 상태/목록 ---------------------------------------------------------
 
     def status(self) -> dict[str, Any]:
+        import time as _t
+        from .pm3 import detect_port
         info: dict[str, Any] = {"version": __version__, "outdir": str(self.cfg.out_path)}
         try:
             pm3 = Pm3.locate(self.cfg.pm3_path or None, self.cfg.port or None, self.cfg.out_path)
@@ -74,6 +76,12 @@ class App:
         except Pm3Error as e:
             info["pm3"] = None
             info["pm3_error"] = str(e)
+        # 꽂힌 포트 자동 탐지(공식 VID:PID 방식). 가볍게 캐시해 폴링 부담을 줄인다.
+        now = _t.monotonic()
+        if now - getattr(self, "_port_at", 0) > 3:
+            self._port = self.cfg.port or detect_port()
+            self._port_at = now
+        info["port"] = getattr(self, "_port", None)
         return info
 
     def dumps(self) -> list[dict[str, Any]]:
@@ -85,6 +93,35 @@ class App:
             st = p.stat()
             items.append({"name": p.name, "size": st.st_size, "mtime": int(st.st_mtime)})
         return items
+
+    def import_bin(self, name: str, data: bytes) -> dict[str, Any]:
+        """외부 .bin 을 out/ 으로 불러온다(업로드). 크기를 먼저 확인한다."""
+        import os as _os
+        if len(data) not in (D.SIZE_1K, 4096):
+            return {"ok": False, "error": "크기가 %d바이트입니다 — 1024(1K) 또는 4096(4K)만 됩니다." % len(data)}
+        safe = _os.path.basename((name or "").replace("\\", "/")) or "imported.bin"
+        if not safe.lower().endswith(".bin"):
+            safe += ".bin"
+        self.cfg.out_path.mkdir(parents=True, exist_ok=True)
+        dest = self.cfg.out_path / safe
+        dest.write_bytes(data)
+        return {"ok": True, "name": safe}
+
+    def analyze_dump(self, name: str) -> dict[str, Any]:
+        """out/ 의 .bin 하나를 조회(블록0·키·값·복제가능)."""
+        import os as _os
+        safe = _os.path.basename((name or "").replace("\\", "/"))
+        src = self.cfg.out_path / safe
+        if not src.is_file():
+            return {"ok": False, "error": "덤프를 찾을 수 없습니다: %s" % safe}
+        try:
+            d = D.Dump.load(src)
+        except ValueError as e:
+            return {"ok": False, "error": str(e)}
+        a = d.analyze()
+        a["ok"] = True
+        a["report"] = d.report()
+        return a
 
     # -- 작업 시작 ---------------------------------------------------------
 
@@ -191,6 +228,15 @@ def _make_handler(app: App):
                 return self._send_json(app.status())
             if path == "/api/dumps":
                 return self._send_json(app.dumps())
+            if path == "/api/analyze":
+                q = self.path.split("?", 1)
+                name = ""
+                if len(q) == 2:
+                    for kv in q[1].split("&"):
+                        if kv.startswith("name="):
+                            from urllib.parse import unquote
+                            name = unquote(kv[5:])
+                return self._send_json(app.analyze_dump(name))
             if path == "/api/job":
                 q = self.path.split("?", 1)
                 since = 0
@@ -213,6 +259,17 @@ def _make_handler(app: App):
             if path == "/api/clone":
                 name = str(self._body_json().get("name") or "")
                 return self._send_json(app.start_clone(name))
+            if path == "/api/import":
+                from urllib.parse import unquote
+                n = int(self.headers.get("Content-Length") or 0)
+                data = self.rfile.read(n) if n > 0 else b""
+                name = ""
+                q = self.path.split("?", 1)
+                if len(q) == 2:
+                    for kv in q[1].split("&"):
+                        if kv.startswith("name="):
+                            name = unquote(kv[5:])
+                return self._send_json(app.import_bin(name, data))
             return self._send_json({"error": "not found"}, 404)
 
     return Handler

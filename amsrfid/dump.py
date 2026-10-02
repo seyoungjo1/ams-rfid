@@ -123,12 +123,27 @@ class Dump:
 
     @classmethod
     def load(cls, path: str | Path) -> "Dump":
-        raw = Path(path).read_bytes()
-        if len(raw) not in (SIZE_1K, 4096):   # 1K 또는 4K
-            raise ValueError(
-                "덤프 크기가 이상합니다: %d바이트 (1024 또는 4096이어야 합니다)" % len(raw)
-            )
-        return cls(bytearray(raw))
+        p = Path(path)
+        if not p.is_file():
+            raise ValueError("파일이 없습니다: %s" % p)
+        raw = p.read_bytes()
+        n = len(raw)
+        if n in (SIZE_1K, 4096):           # 1K 또는 4K
+            return cls(bytearray(raw))
+        # 흔한 '못 읽는' 이유를 짚어 준다.
+        hint = ""
+        if p.suffix.lower() in (".eml", ".json", ".txt"):
+            hint = " — .bin(바이너리 덤프)만 됩니다. .eml/.json 은 변환이 필요합니다."
+        elif n in (320, 2048):
+            hint = " — MIFARE Mini(320)/2K(2048)는 아직 지원하지 않습니다(1K/4K만)."
+        elif n and n % 16 == 0 and n < SIZE_1K:
+            hint = " — 덤프가 잘린 것 같습니다(블록 %d개). 다시 떠 보세요." % (n // 16)
+        elif n > 4096:
+            hint = " — 파일 앞에 머리말이 붙어 있거나 다른 형식일 수 있습니다."
+        raise ValueError(
+            "이 .bin 을 읽지 못했습니다: %d바이트 (MIFARE Classic 1K=1024 또는 4K=4096 이어야 합니다)%s"
+            % (n, hint)
+        )
 
     def save(self, path: str | Path) -> Path:
         p = Path(path)
