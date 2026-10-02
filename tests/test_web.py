@@ -85,6 +85,28 @@ def test_detect_port_no_crash():
     assert p is None or isinstance(p, str)
 
 
+def test_detect_device_shape():
+    from amsrfid import pm3
+    dev = pm3.detect_device()
+    for k in ("present", "com", "needs_driver"):
+        assert k in dev
+
+
+def test_install_driver_returns_tuple():
+    from amsrfid import pm3
+    ok, msg = pm3.install_driver()
+    assert isinstance(ok, bool) and isinstance(msg, str)
+    # 번들된 공식 inf 가 저장소에 있어야 한다
+    assert pm3.default_inf().name == "proxmark3.inf"
+
+
+def test_status_exposes_device_fields(tmp_path):
+    app = web.App(_cfg(tmp_path))
+    s = app.status()
+    for k in ("device_present", "needs_driver", "port"):
+        assert k in s
+
+
 def test_update_job_runs_in_thread(tmp_path, monkeypatch):
     cfg = _cfg(tmp_path)
     app = web.App(cfg)

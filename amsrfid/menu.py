@@ -45,6 +45,7 @@ def run(cfg: Config | None = None) -> int:
         print(" 3) 저장된 .bin 보기")
         print(" 4) 불러오기/조회 — .bin 열어서 블록0·키·값·복제가능 보기")
         print(" 5) 업데이트 확인")
+        print(" 6) 드라이버 설치 (Windows, pm3 가 안 잡힐 때)")
         print(" 0) 나가기")
         choice = input("골라 주세요: ").strip()
 
@@ -89,10 +90,14 @@ def run(cfg: Config | None = None) -> int:
                     print("읽지 못했습니다: %s" % e)
             elif choice == "5":
                 update.run(check_only=False, root=cfg.root, echo=print)
+            elif choice == "6":
+                from .pm3 import install_driver
+                ok, msg = install_driver()
+                print(msg)
             elif choice == "0":
                 return 0
             else:
-                print("1~5 또는 0 을 눌러 주세요.")
+                print("1~6 또는 0 을 눌러 주세요.")
         except Pm3Error as e:
             print("\n문제가 생겼습니다: %s" % e)
         except KeyboardInterrupt:

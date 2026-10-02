@@ -44,6 +44,10 @@ def build_parser() -> argparse.ArgumentParser:
     pi = sub.add_parser("import", help="외부 .bin 을 out 폴더로 불러오기(+조회)")
     pi.add_argument("file", help="불러올 .bin 경로")
 
+    pd = sub.add_parser("driver", help="Proxmark3 드라이버 설치(Windows, 공식 proxmark3.inf)")
+    pd.add_argument("--if-needed", action="store_true",
+                    help="장치는 보이는데 드라이버가 없을 때만 설치(조용히 통과)")
+
     sub.add_parser("info", help="카드 종류만 확인")
 
     pu = sub.add_parser("update", help="배포 브랜치에서 최신본 받기")
@@ -84,6 +88,18 @@ def cmd_clone(cfg: Config, src: str | None, key: str | None = None,
 def cmd_analyze(cfg: Config, file: str) -> int:
     workflow.analyze_bin(file, print)
     return 0
+
+
+def cmd_driver(cfg: Config, if_needed: bool) -> int:
+    from .pm3 import detect_device, install_driver
+    if if_needed:
+        dev = detect_device()
+        if not (dev.get("present") and dev.get("needs_driver")):
+            return 0                         # 설치 불필요 — 조용히 통과
+        print("Proxmark3 장치가 보이는데 드라이버가 없습니다 — 설치를 시작합니다(관리자 권한).")
+    ok, msg = install_driver()
+    print(msg)
+    return 0 if ok else 1
 
 
 def cmd_import(cfg: Config, file: str) -> int:
@@ -132,6 +148,8 @@ def main(argv: list[str] | None = None) -> int:
             return cmd_analyze(cfg, args.file)
         if cmd == "import":
             return cmd_import(cfg, args.file)
+        if cmd == "driver":
+            return cmd_driver(cfg, args.if_needed)
         if cmd == "info":
             return cmd_info(cfg)
         if cmd == "update":

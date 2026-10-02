@@ -33,6 +33,10 @@ set "AMSRFID_RUNNING_BAT=%~f0"
 rem --- auto-update when token.txt is present ---
 %PY% -m amsrfid update
 
+rem --- one-touch driver: install the official Proxmark3 driver only if the device is
+rem     plugged in but has no COM port yet (triggers a UAC prompt only when needed) ---
+%PY% -m amsrfid driver --if-needed
+
 rem --- launch: web UI by default; pass args through otherwise (auto/clone/menu/info) ---
 if "%~1"=="" (
   %PY% -m amsrfid ui

@@ -1,0 +1,41 @@
+; Proxmark3 Windows 드라이버 (RfidResearchGroup/proxmark3 공식 driver/proxmark3.inf 그대로).
+; CDC 장치를 Windows 내장 usbser 에 연결해 COM 포트로 잡히게 한다.
+;   9AC4:4B8F = 정품(proxmark.org) · 2D2D:504D = 구형 부트로더 · 502D:502D = Proxmark3 Easy
+; 설치: pnputil /add-driver proxmark3.inf /install  (관리자 권한) — 이 도구의 '드라이버 설치'가 해 준다.
+[Version]
+Signature="$Windows NT$"
+Class=Ports
+ClassGuid={4D36E978-E325-11CE-BFC1-08002BE10318}
+Provider=%ProviderName%
+DriverVer=03/05/2018,1.1.1.0
+
+[MANUFACTURER]
+%ProviderName%=DeviceList, NTx86, NTamd64
+
+[DeviceList.NTx86]
+%DeviceName%=DriverInstall,USB\VID_9AC4&PID_4B8F
+%DeviceName_old%=DriverInstall,USB\VID_2d2d&PID_504d
+%DeviceName_easy%=DriverInstall,USB\VID_502d&PID_502d
+
+[DeviceList.NTamd64]
+%DeviceName%=DriverInstall,USB\VID_9AC4&PID_4B8F
+%DeviceName_old%=DriverInstall,USB\VID_2d2d&PID_504d
+%DeviceName_easy%=DriverInstall,USB\VID_502d&PID_502d
+
+[DriverInstall]
+include=mdmcpq.inf
+CopyFiles=FakeModemCopyFileSection
+AddReg=LowerFilterAddReg,SerialPropPageAddReg
+
+[DriverInstall.Services]
+include = mdmcpq.inf
+AddService = usbser, 0x00000002, LowerFilter_Service_Inst
+
+[SerialPropPageAddReg]
+HKR,,EnumPropPages32,,"MsPorts.dll,SerialPortPropPageProvider"
+
+[Strings]
+ProviderName = "proxmark.org"
+DeviceName = "Proxmark3"
+DeviceName_old = "Proxmark3 (old)"
+DeviceName_easy = "Proxmark3 (easy?)"

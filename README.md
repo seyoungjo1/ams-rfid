@@ -31,6 +31,23 @@ automation)** 와 똑같이 맞췄습니다:
 
 이 도구는 추가 파이썬 패키지가 거의 필요 없습니다(표준 라이브러리만 사용).
 
+## pm3 인식 / 드라이버 (Windows)
+
+이 도구는 **공식 Proxmark3 방식 그대로** 꽂힌 장치를 자동으로 찾습니다:
+
+- 꽂힌 COM 포트를 공식 USB VID:PID 로 자동 탐지합니다 — `9AC4:4B8F`(정품)·`2D2D:504D`(구형)·
+  **`502D:502D`(Proxmark3 Easy)**. (공식 `pm3` 래퍼와 같은 PowerShell `Win32_SerialPort` 방식)
+- 리눅스/맥은 udev 심링크 `/dev/pm3-*` → `/dev/ttyACM*` 순으로 봅니다.
+
+**장치는 꽂았는데 "드라이버 필요"로 뜰 때** (특히 Proxmark3 Easy): Windows 가 아직 드라이버를
+못 붙여 COM 포트가 안 생긴 상태입니다. `run.bat` 은 이 경우 **자동으로 드라이버 설치를 시도**
+합니다(`driver --if-needed`, 필요할 때만 관리자권한 UAC 창). 웹 UI 의 **「드라이버 설치」** 버튼이나
+`python -m amsrfid driver` 로도 됩니다. 공식 `drivers/proxmark3.inf` 를 `pnputil` 로 설치해
+CDC 장치를 Windows 내장 `usbser` 에 연결 → COM 포트가 생깁니다.
+
+클라이언트(`proxmark3.exe`/`pm3.bat`)는 PATH·ProxSpace·릴리스 폴더에서 자동으로 찾습니다.
+못 찾으면 폴더에 `pm3_path.txt` 한 줄로 경로를 적거나 `amsrfid.toml` 의 `pm3_path` 를 쓰세요.
+
 ## 원터치로 쓰기 (웹 UI)
 
 1. 이 폴더를 통째로 받습니다.
@@ -66,6 +83,8 @@ python -m amsrfid auto       # 원터치: 대기 → 키 복구 → .bin 저장
 python -m amsrfid clone      # 원터치로 읽은 뒤 대상 카드에 복제
 python -m amsrfid clone --from out/ams-....bin   # 그 .bin 을 대상 카드에 복제
 python -m amsrfid analyze <파일.bin>   # .bin 조회: 블록0·서명·키·값·복제가능/껍데기 경고
+python -m amsrfid import <파일.bin>    # 외부 .bin 을 out 폴더로 불러오기(+조회)
+python -m amsrfid driver     # Proxmark3 드라이버 설치(Windows) · --if-needed 로 필요할 때만
 python -m amsrfid info       # 카드 종류만 확인
 python -m amsrfid update     # 배포 브랜치에서 최신본 받기 (--check 면 확인만)
 python -m amsrfid version

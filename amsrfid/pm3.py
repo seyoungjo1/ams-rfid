@@ -148,6 +148,87 @@ def _auto_port() -> str | None:
     return detect_port()
 
 
+def _ps_run(script: str, timeout: float = 20):
+    for exe in ("powershell", "pwsh"):
+        try:
+            return subprocess.run(
+                [exe, "-NoProfile", "-NonInteractive", "-Command", script],
+                capture_output=True, timeout=timeout,
+            )
+        except (OSError, subprocess.SubprocessError):
+            continue
+    return None
+
+
+def detect_device() -> dict:
+    """꽂힌 Proxmark3 를 '드라이버 유무까지' 본다(Win32_PnPEntity 전체에서 VID:PID 로).
+
+    돌려주는 것: {present, com, needs_driver, name, status}
+      · present      : PM3 USB 장치가 보이는가(드라이버 없어도)
+      · com          : COM 포트(드라이버가 붙어 포트가 생겼을 때)
+      · needs_driver : 장치는 보이는데 COM 포트가 없다(=드라이버 설치 필요)
+    """
+    res = {"present": False, "com": None, "needs_driver": False, "name": "", "status": ""}
+    if os.name != "nt":
+        p = detect_port()
+        res["present"] = bool(p)
+        res["com"] = p
+        return res
+    cond = " -or ".join("$_.PNPDeviceID -like '*VID_%s&PID_%s*'" % (v, p) for v, p in _PM3_USB_IDS)
+    ps = ("Get-CimInstance Win32_PnPEntity | Where-Object {%s} | "
+          "ForEach-Object { \"$($_.Name)|$($_.ConfigManagerErrorCode)|$($_.PNPDeviceID)\" }" % cond)
+    out = _ps_run(ps)
+    if out is None:
+        return res
+    for line in (out.stdout or b"").decode("utf-8", "replace").splitlines():
+        line = line.strip()
+        if not line:
+            continue
+        name, _, rest = line.partition("|")
+        errcode, _, _pnp = rest.partition("|")
+        res["present"] = True
+        res["name"] = name.strip()
+        res["status"] = errcode.strip()
+        m = re.search(r"\((COM\d+)\)", name, re.I)
+        if m:
+            res["com"] = m.group(1).upper()
+            res["needs_driver"] = False
+            return res                     # COM 포트까지 있으면 완성 — 바로 반환
+        # COM 이 없거나 오류코드 28(드라이버 없음)이면 드라이버 필요
+        res["needs_driver"] = True
+    return res
+
+
+def default_inf() -> Path:
+    return _root() / "drivers" / "proxmark3.inf"
+
+
+def install_driver(inf: str | Path | None = None) -> tuple[bool, str]:
+    """공식 proxmark3.inf 를 pnputil 로 설치한다(관리자 권한 UAC). Windows 전용."""
+    if os.name != "nt":
+        return (False, "드라이버 설치는 Windows 에서만 필요합니다.")
+    infp = Path(inf) if inf else default_inf()
+    if not infp.is_file():
+        return (False, "드라이버 파일을 찾지 못했습니다: %s" % infp)
+    # pnputil 을 관리자 권한으로 띄운다(UAC 창이 뜬다). 끝날 때까지 기다려 종료코드를 받는다.
+    ps = (
+        "$p = Start-Process pnputil -ArgumentList '/add-driver','%s','/install' "
+        "-Verb RunAs -Wait -PassThru; $p.ExitCode" % str(infp)
+    )
+    out = _ps_run(ps, timeout=180)
+    if out is None:
+        return (False, "PowerShell 을 실행하지 못했습니다.")
+    txt = (out.stdout or b"").decode("utf-8", "replace").strip()
+    err = (out.stderr or b"").decode("utf-8", "replace").strip()
+    code = txt.splitlines()[-1].strip() if txt else ""
+    # pnputil: 0=성공, 3010/259=성공(재부팅/대기), 1=사용자가 UAC 취소 등
+    if code in ("0", "3010", "259"):
+        return (True, "드라이버 설치 완료(코드 %s). 장치를 다시 꽂거나 잠시 기다리면 COM 포트가 잡힙니다." % code)
+    if "canceled" in err.lower() or "취소" in err or code == "":
+        return (False, "드라이버 설치가 취소되었거나 관리자 권한을 얻지 못했습니다(UAC 에서 '예'를 눌러 주세요).")
+    return (False, "드라이버 설치 실패(코드 %s). %s" % (code or "?", err[-300:]))
+
+
 @dataclass
 class Pm3Result:
     returncode: int

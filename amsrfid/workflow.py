@@ -39,6 +39,7 @@ class OneTouchResult:
 
 
 def wait_for_device(pm3: Pm3, cfg: Config, echo: Echo = print) -> None:
+    from .pm3 import detect_device
     echo("Proxmark3 를 찾는 중… (USB 에 꽂아 주세요)")
     deadline = time.monotonic() + cfg.wait
     first = True
@@ -46,10 +47,18 @@ def wait_for_device(pm3: Pm3, cfg: Config, echo: Echo = print) -> None:
         if pm3.device_present():
             echo("  → Proxmark3 연결 확인")
             return
+        # 장치는 보이는데 COM 포트가 없으면(=드라이버 없음) 바로 알려 준다.
+        dev = detect_device()
+        if dev.get("needs_driver"):
+            raise DeviceNotFound(
+                "Proxmark3 장치는 보이는데 드라이버가 없어 COM 포트가 안 잡힙니다"
+                "%s.\n'드라이버 설치'(웹 UI 버튼 또는 `python -m amsrfid driver`)를 먼저 실행하세요."
+                % (" (" + dev.get("name", "") + ")" if dev.get("name") else "")
+            )
         if time.monotonic() > deadline:
             raise DeviceNotFound(
                 "제한 시간(%.0f초) 안에 Proxmark3 를 찾지 못했습니다. "
-                "케이블·드라이버를 확인하세요." % cfg.wait
+                "USB 케이블·포트를 확인하거나, 드라이버를 설치해 보세요." % cfg.wait
             )
         if first:
             echo("  (아직 안 보입니다 — 꽂을 때까지 기다립니다)")

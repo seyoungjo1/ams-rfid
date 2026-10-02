@@ -89,6 +89,15 @@
       복제하는 것은 불법입니다. 복제(쓰기)는 대상 카드를 덮어쓰며 되돌릴 수 없습니다.</div>
   </div>
 
+  <div class="banner" id="driverBanner" style="display:none;background:color-mix(in srgb,var(--bad) 13%,transparent);border-color:color-mix(in srgb,var(--bad) 45%,var(--line))">
+    <div>🔌</div>
+    <div style="flex:1">
+      <b id="driverMsg">Proxmark3 장치는 보이는데 드라이버가 없어 COM 포트가 안 잡힙니다.</b>
+      아래 버튼을 누르면 공식 드라이버를 설치합니다(관리자 권한 UAC 창이 뜹니다).
+    </div>
+    <button class="btn sm" id="btnDriver" style="align-self:center">드라이버 설치</button>
+  </div>
+
   <div class="card">
     <h2>원터치 읽기</h2>
     <button class="btn primary" id="btnAuto">🔓 꽂고 올린 카드 읽어서 .bin 저장</button>
@@ -164,11 +173,26 @@
     api("GET","/api/status").then(function(s){
       $("ver").textContent = "v" + (s.version || "?");
       var ok = !!s.pm3;
-      $("pm3dot").className = "dot " + (ok ? "ok" : "no");
-      var label = ok ? "pm3 준비됨" : "pm3 없음";
-      if (s.port) label += " · " + s.port;      // 꽂힌 포트 자동 탐지
+      // 칩 상태: 포트까지 잡히면 준비됨, 장치만 보이면 드라이버 필요, 아무것도 없으면 없음
+      var good = ok && !!s.port;
+      $("pm3dot").className = "dot " + (good ? "ok" : (s.device_present ? "" : "no"));
+      var label;
+      if (s.port) label = "pm3 준비됨 · " + s.port;
+      else if (s.needs_driver) label = "드라이버 필요";
+      else if (s.device_present) label = "장치 감지됨";
+      else if (!ok) label = "pm3 없음";
+      else label = "카드 대기";
       $("pm3txt").textContent = label;
       $("pm3txt").title = ok ? (s.pm3 + (s.port ? "  @" + s.port : "")) : (s.pm3_error || "");
+      // 드라이버 필요 배너
+      var db = $("driverBanner");
+      if (s.needs_driver) {
+        db.style.display = "flex";
+        $("driverMsg").textContent = "Proxmark3" + (s.device_name ? " (" + s.device_name + ")" : "") +
+          " 장치는 보이는데 드라이버가 없어 COM 포트가 안 잡힙니다.";
+      } else {
+        db.style.display = "none";
+      }
     }).catch(function(){
       $("pm3dot").className = "dot no"; $("pm3txt").textContent = "서버 응답 없음";
     });
@@ -283,6 +307,17 @@
   $("btnRefresh").onclick = loadDumps;
   $("btnImport").onclick = function(){ $("fileInput").click(); };
   $("fileInput").onchange = function(e){ importFile(e.target.files[0]); e.target.value = ""; };
+  $("btnDriver").onclick = function(){
+    var btn = $("btnDriver"); btn.disabled = true; btn.textContent = "설치 중… (UAC 창 확인)";
+    api("POST","/api/driver").then(function(res){
+      btn.disabled = false; btn.textContent = "드라이버 설치";
+      var box = $("analysis"); box.style.display="block";
+      box.textContent = (res && res.message) || "완료";
+      loadStatus();
+    }).catch(function(){
+      btn.disabled = false; btn.textContent = "드라이버 설치";
+    });
+  };
 
   loadStatus(); loadDumps();
   setInterval(loadStatus, 4000);

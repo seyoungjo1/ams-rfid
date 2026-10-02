@@ -68,7 +68,7 @@ class App:
 
     def status(self) -> dict[str, Any]:
         import time as _t
-        from .pm3 import detect_port
+        from .pm3 import detect_device
         info: dict[str, Any] = {"version": __version__, "outdir": str(self.cfg.out_path)}
         try:
             pm3 = Pm3.locate(self.cfg.pm3_path or None, self.cfg.port or None, self.cfg.out_path)
@@ -76,13 +76,25 @@ class App:
         except Pm3Error as e:
             info["pm3"] = None
             info["pm3_error"] = str(e)
-        # 꽂힌 포트 자동 탐지(공식 VID:PID 방식). 가볍게 캐시해 폴링 부담을 줄인다.
+        # 꽂힌 장치/포트/드라이버 상태를 공식 VID:PID 로 탐지. 가볍게 캐시해 폴링 부담을 줄인다.
         now = _t.monotonic()
-        if now - getattr(self, "_port_at", 0) > 3:
-            self._port = self.cfg.port or detect_port()
-            self._port_at = now
-        info["port"] = getattr(self, "_port", None)
+        if now - getattr(self, "_dev_at", 0) > 3:
+            self._dev = detect_device()
+            if self.cfg.port:
+                self._dev["com"] = self.cfg.port
+            self._dev_at = now
+        dev = getattr(self, "_dev", {})
+        info["port"] = dev.get("com")
+        info["device_present"] = dev.get("present", False)
+        info["needs_driver"] = dev.get("needs_driver", False)
+        info["device_name"] = dev.get("name", "")
         return info
+
+    def install_driver(self) -> dict[str, Any]:
+        from .pm3 import install_driver
+        ok, msg = install_driver()
+        self._dev_at = 0           # 상태 캐시를 비워 다음 status 에서 다시 본다
+        return {"ok": ok, "message": msg}
 
     def dumps(self) -> list[dict[str, Any]]:
         out = self.cfg.out_path
@@ -256,6 +268,8 @@ def _make_handler(app: App):
                 return self._send_json(app.start_auto())
             if path == "/api/update":
                 return self._send_json(app.start_update())
+            if path == "/api/driver":
+                return self._send_json(app.install_driver())
             if path == "/api/clone":
                 name = str(self._body_json().get("name") or "")
                 return self._send_json(app.start_clone(name))
