@@ -500,12 +500,19 @@ class Pm3:
         name = Path(self.client).name.lower()
         return name.startswith("pm3")
 
+    def _resolved_port(self) -> str | None:
+        """포트를 한 번 찾으면 인스턴스에 캐시한다(매 명령마다 재탐색 방지)."""
+        if not self.port:
+            self.port = _auto_port()
+        return self.port
+
     def _build_args(self, commands: list[str]) -> list[str]:
         args = [self.client]
-        if not self._is_wrapper():
-            port = self.port or _auto_port()
-            if port:
-                args.extend(["-p", port])        # Iceman/RRG 클라이언트는 -p <port> (위치인자 아님)
+        # 포트를 알면 래퍼(pm3/pm3.bat)든 날것(proxmark3.exe)이든 -p 로 넘긴다.
+        # 래퍼의 자체 자동탐지는 Easy(502D:502D)를 놓치므로, 우리가 찾은 포트를 직접 준다.
+        port = self._resolved_port()
+        if port:
+            args.extend(["-p", port])
         args.extend(self.extra_args)
         for c in commands:
             args.extend(["-c", c])
@@ -536,10 +543,9 @@ class Pm3:
     def run_raw(self, extra: list[str], timeout: float = 300) -> Pm3Result:
         """`-c` 없이 클라이언트를 직접 호출한다(플래싱 등: proxmark3 -p <port> --flash ...)."""
         args = [self.client]
-        if not self._is_wrapper():
-            port = self.port or _auto_port()
-            if port:
-                args.extend(["-p", port])
+        port = self._resolved_port()
+        if port:
+            args.extend(["-p", port])
         args.extend(extra)
         try:
             done = subprocess.run(
