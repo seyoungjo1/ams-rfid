@@ -321,20 +321,22 @@
     api("GET","/api/diag").then(function(d){
       var L = [];
       L.push("=== 진단 ===");
-      L.push("OS: " + d.os + " · PowerShell: " + d.powershell + " · 클라이언트: " + (d.client || "못 찾음"));
+      L.push("OS: " + d.os + " · PowerShell: " + d.powershell + " · pyserial: " + d.pyserial);
+      L.push("클라이언트: " + (d.client || "못 찾음"));
       var dev = d.device || {};
       L.push("장치: present=" + dev.present + " com=" + dev.com + " needs_driver=" + dev.needs_driver + " name=" + (dev.name||""));
-      L.push("레지스트리 COM: " + ((d.registry_com||[]).join(", ") || "(없음)"));
       L.push("");
-      L.push("COM 포트 " + (d.com_ports||[]).length + "개:");
-      (d.com_ports||[]).forEach(function(c){ L.push("  " + c.com + "  " + c.name); });
-      L.push("");
-      L.push("PM3 로 보이는 장치 " + (d.pm3_devices||[]).length + "개:");
-      (d.pm3_devices||[]).forEach(function(p){ L.push("  " + p.name + "  errcode=" + p.errcode + "  [" + p.pnpid + "]"); });
-      if(!(d.pm3_devices||[]).length){
-        L.push("  → PM3 가 안 보입니다. 데이터선 USB 케이블/포트를 바꿔 꽂아 보세요.");
-        L.push("    위 COM 목록에 프록시마크 같은 게 있으면 그 번호를 알려 주세요.");
+      L.push("pyserial 포트 " + (d.serial_ports||[]).length + "개:");
+      (d.serial_ports||[]).forEach(function(p){
+        L.push("  " + p.device + "  vid=" + (p.vid?("0x"+p.vid.toString(16)):"-") + " pid=" + (p.pid?("0x"+p.pid.toString(16)):"-") + "  " + (p.desc||""));
+      });
+      var pm3 = d.pm3_devices||[];
+      if(pm3.length){
+        L.push("");
+        L.push("PM3 로 보이는 PnP 장치 " + pm3.length + "개:");
+        pm3.forEach(function(p){ L.push("  " + p.name + "  errcode=" + p.errcode + "  [" + p.pnpid + "]"); });
       }
+      if(d.hint){ L.push(""); L.push("→ " + d.hint); }
       box.textContent = L.join("\n");
     }).catch(function(){ box.textContent = "진단 실패(서버 응답 없음)"; });
   };

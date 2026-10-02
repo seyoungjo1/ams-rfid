@@ -133,25 +133,25 @@ def cmd_diag(cfg: Config) -> int:
     from .pm3 import diagnostics
     d = diagnostics()
     print("=== ams-rfid 진단 ===")
-    print("OS: %s (%s) · Python %s · PowerShell: %s"
-          % (d.get("os"), d.get("platform"), d.get("python"), d.get("powershell")))
+    print("OS: %s (%s) · Python %s · PowerShell: %s · pyserial: %s"
+          % (d.get("os"), d.get("platform"), d.get("python"), d.get("powershell"), d.get("pyserial")))
     print("클라이언트: %s" % (d.get("client") or "못 찾음"))
     dev = d.get("device") or {}
     print("장치 감지: present=%s com=%s needs_driver=%s name=%s"
           % (dev.get("present"), dev.get("com"), dev.get("needs_driver"), dev.get("name")))
-    print("PnP 전체 개수: %s" % d.get("pnp_count"))
+    sp = d.get("serial_ports") or []
+    print("pyserial 포트 %d개:" % len(sp))
+    for p in sp:
+        print("  %s  vid=%s pid=%s  %s" % (p.get("device"),
+              hex(p["vid"]) if p.get("vid") else "-", hex(p["pid"]) if p.get("pid") else "-", p.get("desc")))
     print("레지스트리 COM: %s" % (", ".join(d.get("registry_com") or []) or "(없음)"))
-    coms = d.get("com_ports") or []
-    print("COM 포트 %d개:" % len(coms))
-    for c in coms:
-        print("  %s  %s  [%s]" % (c.get("com"), c.get("name"), c.get("pnpid")))
     pm3s = d.get("pm3_devices") or []
-    print("PM3 로 보이는 장치 %d개:" % len(pm3s))
-    for p in pm3s:
-        print("  %s  errcode=%s  [%s]" % (p.get("name"), p.get("errcode"), p.get("pnpid")))
-    if not pm3s:
-        print("  → PM3 장치가 안 보입니다. USB 케이블(데이터선)·포트를 바꿔 꽂아 보세요.")
-        print("    위 'COM 포트' 목록에 프록시마크로 짐작되는 게 있으면 그 번호를 알려 주세요.")
+    if pm3s:
+        print("PM3 로 보이는 PnP 장치 %d개:" % len(pm3s))
+        for p in pm3s:
+            print("  %s  errcode=%s  [%s]" % (p.get("name"), p.get("errcode"), p.get("pnpid")))
+    if d.get("hint"):
+        print("\n→ " + d["hint"])
     return 0
 
 

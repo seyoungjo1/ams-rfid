@@ -1,3 +1,5 @@
-# 표준 라이브러리만으로 돕니다. 파이썬 3.11+ 면 추가 설치가 필요 없습니다.
+# 포트 자동탐지에 pyserial 을 씁니다(Proxmark3GUI·ProxSpace 등이 쓰는 검증된 방식).
+# 없어도 돌아가지만(윈도우는 PnP 스캔으로 대체), 있으면 훨씬 안정적입니다.
+pyserial>=3.5
 # 3.10 이하에서 amsrfid.toml 설정을 읽으려면 tomli 가 있으면 좋습니다(없어도 기본값으로 동작).
 tomli; python_version < "3.11"

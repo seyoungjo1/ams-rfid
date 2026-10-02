@@ -30,6 +30,9 @@ if not defined PY (
 rem --- tell the updater which .bat is currently running (it cannot overwrite itself) ---
 set "AMSRFID_RUNNING_BAT=%~f0"
 
+rem --- ensure pyserial (proven port auto-detect, same as Proxmark3GUI/ProxSpace) ---
+%PY% -c "import serial.tools.list_ports" 2>nul || %PY% -m pip install -q pyserial 2>nul
+
 rem --- auto-update when token.txt is present ---
 %PY% -m amsrfid update
 

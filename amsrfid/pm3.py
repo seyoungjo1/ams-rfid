@@ -221,6 +221,43 @@ def _pm3_match(pnpid: str) -> bool:
     return any(("VID_" + v) in u and ("PID_" + p) in u for v, p in _PM3_USB_IDS)
 
 
+# VID:PID 를 정수쌍으로도 — pyserial 비교용.
+_PM3_VIDPID = {(int(v, 16), int(p, 16)) for v, p in _PM3_USB_IDS}
+
+
+def _pyserial_ports() -> list[dict] | None:
+    """pyserial 로 시리얼 포트를 나열한다(Proxmark3GUI·ProxSpace 등이 쓰는 검증된 방식).
+
+    pyserial 이 없으면 None(=대체 수단으로 넘어가라는 신호)을 돌려준다.
+    """
+    try:
+        from serial.tools.list_ports import comports  # type: ignore
+    except Exception:
+        return None
+    out = []
+    for p in comports():
+        desc = " ".join(filter(None, [
+            getattr(p, "description", "") or "",
+            getattr(p, "manufacturer", "") or "",
+            getattr(p, "product", "") or "",
+            getattr(p, "hwid", "") or "",
+        ]))
+        out.append({
+            "device": p.device,
+            "vid": getattr(p, "vid", None),
+            "pid": getattr(p, "pid", None),
+            "desc": desc,
+        })
+    return out
+
+
+def _port_is_pm3(info: dict) -> bool:
+    if info.get("vid") and info.get("pid") and (info["vid"], info["pid"]) in _PM3_VIDPID:
+        return True
+    d = (info.get("desc") or "").lower()
+    return "proxmark" in d or "iceman" in d
+
+
 def _com_of(name: str) -> str | None:
     m = re.search(r"\((COM\d+)\)", name or "", re.I)
     return m.group(1).upper() if m else None
@@ -268,21 +305,33 @@ def _reg_serialcomm() -> list[str]:
 def detect_device() -> dict:
     """꽂힌 Proxmark3 를 '드라이버 유무까지' 본다.
 
-    돌려주는 것: {present, com, needs_driver, name, status}
-      · present      : PM3 USB 장치가 보이는가(드라이버 없어도)
-      · com          : COM 포트(드라이버가 붙어 포트가 생겼을 때)
-      · needs_driver : 장치는 보이는데 COM 포트가 없다(=드라이버 설치 필요)
+    1순위: pyserial 로 PM3 의 COM 포트를 찾는다(Proxmark3GUI·ProxSpace 와 같은 검증된 방식).
+    COM 포트가 안 보이면(드라이버 없음 등) Windows 는 PnP 전체를 뒤져 '장치는 있는데 COM 이
+    없다'(=드라이버 필요)를 가려낸다.
     """
     res = {"present": False, "com": None, "needs_driver": False, "name": "", "status": ""}
+
+    # 1순위: pyserial (크로스플랫폼, USB-CDC 포트도 안 놓침)
+    ports = _pyserial_ports()
+    if ports is not None:
+        for pi in ports:
+            if _port_is_pm3(pi):
+                res["present"] = True
+                res["com"] = pi["device"]
+                res["name"] = pi.get("desc", "")
+                return res
+
     if os.name != "nt":
-        p = detect_port()
-        res["present"] = bool(p)
-        res["com"] = p
+        # 리눅스/맥: pyserial 이 없을 때만 장치 노드로 대체
+        if ports is None:
+            p = detect_port()
+            res["present"] = bool(p)
+            res["com"] = p
         return res
+
+    # Windows: COM 으로 안 잡혔다 → PnP 전체에서 PM3 를 찾아 '드라이버 필요'인지 본다
     rows = _win_scan()
-    # 1) VID:PID 가 PM3 인 장치
     pm3 = [(n, e, p) for (n, e, p) in rows if _pm3_match(p)]
-    # 2) 이름에 proxmark 가 들어간 장치도 포함(혹시 VID 가 다른 변종)
     for (n, e, p) in rows:
         if ("proxmark" in n.lower() or "pm3" in n.lower()) and (n, e, p) not in pm3:
             pm3.append((n, e, p))
@@ -290,12 +339,12 @@ def detect_device() -> dict:
         res["present"] = True
         res["name"] = pm3[0][0]
         res["status"] = pm3[0][1]
-        for (n, e, p) in pm3:                 # COM 포트가 붙은 것이 있으면 그게 완성
+        for (n, e, p) in pm3:
             com = _com_of(n)
             if com:
-                res["com"] = com
+                res["com"] = com            # pyserial 이 없어도 PnP 이름에서 COM 을 건짐
                 return res
-        res["needs_driver"] = True            # 장치는 있는데 COM 이 없다 → 드라이버 필요
+        res["needs_driver"] = True          # 장치는 있는데 COM 이 없다 → 드라이버/케이블 문제
     return res
 
 
@@ -303,7 +352,12 @@ def detect_port() -> str | None:
     """Proxmark3 가 꽂힌 시리얼 포트를 자동 탐지한다. 못 찾으면 None."""
     if os.name == "nt":
         return detect_device().get("com")
-    # 리눅스/맥: 공식 pm3 래퍼는 udev 가 만든 /dev/pm3-* 를 먼저 보고, 없으면 ACM/usbmodem 을 본다.
+    # 리눅스/맥: pyserial 우선, 없으면 장치 노드.
+    ports = _pyserial_ports()
+    if ports is not None:
+        for pi in ports:
+            if _port_is_pm3(pi):
+                return pi["device"]
     for pat in ("/dev/pm3-*", "/dev/ttyACM*", "/dev/tty.usbmodem*", "/dev/cu.usbmodem*", "/dev/ttyUSB*"):
         hits = sorted(glob.glob(pat))
         if hits:
@@ -318,6 +372,9 @@ def _auto_port() -> str | None:
 def diagnostics() -> dict:
     """진단용 — 도구가 '지금 무엇을 보는지' 전부 모아 돌려준다(USB 인식 문제 추적)."""
     d: dict = {"os": os.name, "platform": sys.platform, "python": sys.version.split()[0]}
+    ports = _pyserial_ports()
+    d["pyserial"] = ports is not None
+    d["serial_ports"] = ports or []          # pyserial 이 본 모든 포트(없으면 [])
     if os.name == "nt":
         d["powershell"] = _ps_run("'ok'") is not None
         rows = _win_scan()
@@ -339,6 +396,11 @@ def diagnostics() -> dict:
         d["client"] = find_client(deep=True)
     except DeviceNotFound:
         d["client"] = None
+    # 흔한 진짜 원인 힌트
+    if not d["device"].get("present"):
+        d["hint"] = ("장치가 안 보입니다. 1) '데이터 전송용' USB 케이블인지 확인(충전 전용은 안 됨) "
+                     "2) 다른 USB 포트에 꽂기 3) Win7 이면 드라이버 설치. Win10/11 은 꽂으면 "
+                     "보통 자동 인식됩니다.")
     return d
 
 
@@ -443,7 +505,7 @@ class Pm3:
         if not self._is_wrapper():
             port = self.port or _auto_port()
             if port:
-                args.append(port)
+                args.extend(["-p", port])        # Iceman/RRG 클라이언트는 -p <port> (위치인자 아님)
         args.extend(self.extra_args)
         for c in commands:
             args.extend(["-c", c])
@@ -472,12 +534,12 @@ class Pm3:
         return Pm3Result(done.returncode, out, err)
 
     def run_raw(self, extra: list[str], timeout: float = 300) -> Pm3Result:
-        """`-c` 없이 클라이언트를 직접 호출한다(플래싱 등: proxmark3 <port> --flash ...)."""
+        """`-c` 없이 클라이언트를 직접 호출한다(플래싱 등: proxmark3 -p <port> --flash ...)."""
         args = [self.client]
         if not self._is_wrapper():
             port = self.port or _auto_port()
             if port:
-                args.append(port)
+                args.extend(["-p", port])
         args.extend(extra)
         try:
             done = subprocess.run(

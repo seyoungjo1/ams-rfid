@@ -102,6 +102,26 @@ def test_pm3_match_vidpid():
     assert pm3._com_of("something no com") is None
 
 
+def test_pyserial_detection(monkeypatch):
+    from amsrfid import pm3
+    # pyserial 이 PM3 Easy(VID 0x502D/PID 0x502D) 포트를 보고하면 바로 잡아야 한다
+    monkeypatch.setattr(pm3, "_pyserial_ports", lambda: [
+        {"device": "COM1", "vid": 0x1234, "pid": 0x5678, "desc": "random"},
+        {"device": "COM7", "vid": 0x502D, "pid": 0x502D, "desc": "USB Serial Device"},
+    ])
+    dev = pm3.detect_device()
+    assert dev["present"] is True and dev["com"] == "COM7"
+
+
+def test_pyserial_detection_by_description(monkeypatch):
+    from amsrfid import pm3
+    # VID/PID 가 없어도 설명에 proxmark 가 있으면 잡는다(GUI 와 같은 fallback)
+    monkeypatch.setattr(pm3, "_pyserial_ports", lambda: [
+        {"device": "/dev/ttyACM0", "vid": None, "pid": None, "desc": "Proxmark3 Iceman"},
+    ])
+    assert pm3.detect_port() == "/dev/ttyACM0"
+
+
 def test_diagnostics_shape():
     from amsrfid import pm3
     d = pm3.diagnostics()
