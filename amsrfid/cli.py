@@ -32,6 +32,12 @@ def build_parser() -> argparse.ArgumentParser:
 
     pc = sub.add_parser("clone", help="대상 카드에 복제(쓰기)")
     pc.add_argument("--from", dest="src", default=None, help="쓸 .bin 파일(없으면 먼저 원터치로 읽음)")
+    pc.add_argument("--key", dest="key", default=None, help="대상 인증에 쓸 키 파일(hf-mf-<UID>-key.bin)")
+    pc.add_argument("--force-placeholder", action="store_true",
+                    help="키가 FF 껍데기인 덤프라도 그대로 진행(gen1a 매직에 데이터만 통째로)")
+
+    pa = sub.add_parser("analyze", help="저장된/불러온 .bin 을 조회(블록0·키·값·복제가능)")
+    pa.add_argument("file", help="조회할 .bin 경로")
 
     sub.add_parser("info", help="카드 종류만 확인")
 
@@ -51,7 +57,8 @@ def cmd_auto(cfg: Config) -> int:
     return 1
 
 
-def cmd_clone(cfg: Config, src: str | None) -> int:
+def cmd_clone(cfg: Config, src: str | None, key: str | None = None,
+              force_placeholder: bool = False) -> int:
     pm3 = Pm3.locate(cfg.pm3_path or None, cfg.port or None, cfg.out_path)
     workflow.wait_for_device(pm3, cfg, print)
     if src is None:
@@ -62,9 +69,15 @@ def cmd_clone(cfg: Config, src: str | None) -> int:
             print("\n먼저 읽기에 실패했습니다. 복제를 멈춥니다. %s" % (res.note or ""))
             return 1
         src = str(res.bin_path)
+        key = key or (str(res.key_path) if res.key_path else None)
         print("\n이제 대상(쓸) 카드로 바꿔 올려 주세요.")
     print("\n주의: 대상 카드를 덮어씁니다. 본인 소유/권한 있는 카드만 쓰세요.")
-    workflow.clone_to_card(pm3, src, cfg, print)
+    workflow.clone_to_card(pm3, src, cfg, print, key_path=key, allow_placeholder=force_placeholder)
+    return 0
+
+
+def cmd_analyze(cfg: Config, file: str) -> int:
+    workflow.analyze_bin(file, print)
     return 0
 
 
@@ -92,7 +105,9 @@ def main(argv: list[str] | None = None) -> int:
             from . import web
             return web.serve(cfg, port=args.port, open_browser=not args.no_browser)
         if cmd == "clone":
-            return cmd_clone(cfg, args.src)
+            return cmd_clone(cfg, args.src, key=args.key, force_placeholder=args.force_placeholder)
+        if cmd == "analyze":
+            return cmd_analyze(cfg, args.file)
         if cmd == "info":
             return cmd_info(cfg)
         if cmd == "update":

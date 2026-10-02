@@ -109,7 +109,14 @@ def _newest_match(outdir: Path, pattern: str, uid: str, since: float) -> Path | 
 def recover_and_dump(
     pm3: Pm3, info: D.CardInfo, cfg: Config, echo: Echo = print
 ) -> OneTouchResult:
-    """autopwn 으로 전 섹터 키를 복구하고 덤프를 저장한다."""
+    """전 섹터 키를 복구하고 덤프를 저장한다.
+
+    FM11RF08S 는 정적 암호화 nonce 대응 때문에 일반 nested/autopwn 으로는 안 풀린다.
+    Proxmark3 Iceman 의 전용 스크립트 `fm11rf08s_recovery` 를 쓴다. 이 스크립트는
+    백도어 키로 섹터별 nonce 를 모으고(`hf mf isen --collect_fm11rf08s_with_data`),
+    staticnested_2x1nt_rf08s 솔버로 KeyA/KeyB 를 복구한 뒤 키 파일·덤프를 떨군다.
+    일반 MIFARE Classic 은 기존대로 autopwn 을 쓴다.
+    """
     out = cfg.out_path
     out.mkdir(parents=True, exist_ok=True)
     pm3.workdir = out                           # pm3 가 덤프를 이 폴더에 떨구게 한다
@@ -121,13 +128,25 @@ def recover_and_dump(
         except OSError:
             pass
 
-    echo("키를 복구하고 덤프를 뜨는 중… (수 분 걸릴 수 있습니다)")
     started = time.time()
-    res = pm3.run("hf mf autopwn", timeout=cfg.timeout)
-    low = res.text.lower()
+    if info.is_fm11rf08s:
+        echo("FM11RF08S — 전용 복구 스크립트로 키를 복구합니다 (백도어 %s, static nested)."
+             % D.FM11RF08S_BACKDOOR)
+        echo("  카드를 안테나 위에 그대로 두세요. 수 분 걸릴 수 있습니다…")
+        # -x: 먼저 기본키 확인(fchk)  -y: 끝에 찾은 키로 재확인하며 덤프 저장
+        pm3.run("script run fm11rf08s_recovery -x -y", timeout=cfg.timeout)
+    else:
+        echo("일반 MIFARE Classic — autopwn 으로 키를 복구합니다. 수 분 걸릴 수 있습니다…")
+        pm3.run("hf mf autopwn", timeout=cfg.timeout)
 
     binp = _newest_match(out, "hf-mf-*-dump.bin", info.uid, started)
     keyp = _newest_match(out, "hf-mf-*-key.bin", info.uid, started)
+
+    # 키는 나왔는데 덤프가 없으면, 그 키 파일로 덤프를 한 번 더 뜬다.
+    if not binp and keyp:
+        echo("  복구한 키로 덤프를 뜹니다…")
+        pm3.run("hf mf dump", timeout=cfg.timeout)
+        binp = _newest_match(out, "hf-mf-*-dump.bin", info.uid, started)
 
     result = OneTouchResult(info=info)
     if binp and binp.is_file():
@@ -140,58 +159,108 @@ def recover_and_dump(
         result.recovered = True
         echo("  → 덤프 저장: %s" % final)
         try:
-            echo(D.Dump.load(final).pretty())
+            echo(D.Dump.load(final).report())
         except ValueError:
             pass
         return result
 
-    # autopwn 이 덤프를 못 남긴 경우 — FM11RF08S 전용 복구 스크립트를 안내한다.
-    if info.is_fm11rf08s and ("fail" in low or "fm11rf08s" in low or not binp):
-        result.note = (
-            "autopwn 이 전 섹터를 풀지 못했습니다. FM11RF08S 전용 복구 스크립트로 다시 시도하세요:\n"
-            "  pm3 셸에서:  script run fm11rf08s_recovery\n"
-            "  (복구된 키 파일로 `hf mf dump` 하면 .bin 이 나옵니다. 백도어 키 %s 를 씁니다.)"
-            % D.FM11RF08S_BACKDOOR
-        )
-        echo("  → " + result.note)
-    else:
-        result.note = "키 복구에 실패했습니다. 카드가 안테나 위에 그대로 있는지, 접촉이 좋은지 확인하세요."
-        echo("  → " + result.note)
+    result.note = (
+        "키/덤프를 얻지 못했습니다. 카드가 안테나 위에 그대로 있는지, 접촉이 좋은지 확인하세요. "
+        "FM11RF08S 가 맞는데도 실패하면 pm3 셸에서 직접 `script run fm11rf08s_recovery -x -y` 를 "
+        "돌려 메시지를 확인하세요(펌웨어가 최신이어야 백도어 복구가 됩니다)."
+    )
+    echo("  → " + result.note)
     return result
+
+
+def analyze_bin(path: str | Path, echo: Echo = print) -> dict:
+    """불러온 .bin 하나를 뜯어보고(블록0·키·값·복제가능) 리포트를 출력한다."""
+    d = D.Dump.load(path)
+    report = d.report()
+    echo(report)
+    return d.analyze()
 
 
 # -- 복제(쓰기) -------------------------------------------------------------
 
 
-def clone_to_card(pm3: Pm3, bin_path: str | Path, cfg: Config, echo: Echo = print) -> None:
+def _is_gen1a(magic: str) -> bool:
+    m = (magic or "").lower()
+    return "gen1" in m or "gen 1" in m
+
+
+def _resolve_key_file(key_path, uid: str, out: Path, d: "D.Dump", echo: Echo) -> Path | None:
+    """restore 에 넘길 키 파일을 고른다.
+
+    우선순위: 직접 준 key_path > out/hf-mf-<UID>-key.bin(복구 결과) > 덤프 트레일러에서 생성.
+    덤프 트레일러가 FF 껍데기면 생성해도 소용없다(앞 단계에서 걸러진다).
+    """
+    if key_path and Path(key_path).is_file():
+        echo("  키 파일: %s" % Path(key_path).name)
+        return Path(key_path)
+    cand = out / ("hf-mf-%s-key.bin" % uid)
+    if cand.is_file():
+        echo("  복구된 키 파일 사용: %s" % cand.name)
+        return cand
+    gen = d.write_key_file(out / ("hf-mf-%s-key.bin" % uid))
+    echo("  덤프 트레일러에서 키 파일 생성: %s" % gen.name)
+    return gen
+
+
+def clone_to_card(pm3: Pm3, bin_path: str | Path, cfg: Config, echo: Echo = print,
+                  key_path: str | Path | None = None, allow_placeholder: bool = False) -> None:
     """떠 둔 .bin 을 대상 카드에 쓴다(복제). 대상 카드를 덮어쓰므로 조심.
 
-    · 매직 카드(gen1a 등): `hf mf cload` — 블록 0 까지 통째로 쓴다.
-    · 일반/FM11RF08S: `hf mf restore` — 덤프 안 트레일러의 키로 블록을 되쓴다.
+    복제의 핵심(백도어 함정)
+      · 백도어로 데이터만 읽은 덤프는 트레일러 키가 FF '껍데기'다 — 그대로 복제하면 원본
+        키가 안 들어간다. 그런 덤프는 막고, 먼저 백도어 복구(fm11rf08s_recovery)로 진짜
+        키가 담긴 덤프/키 파일을 받으라고 안내한다.
+    방식
+      · gen1a 매직카드 → `hf mf cload` : 블록0(UID·서명)까지 통째로, 인증 없이 쓴다(가장 확실).
+      · 그 외/일반     → `hf mf restore` : 키 파일로 대상을 인증해 데이터·키를 쓴다(일반 카드는
+        블록0=UID 변경 불가).
     """
     bin_path = Path(bin_path)
     if not bin_path.is_file():
         raise WorkflowError("덤프 파일을 찾을 수 없습니다: %s" % bin_path)
     d = D.Dump.load(bin_path)
+    a = d.analyze()
+    uid = a["uid"]
+
+    # 껍데기 키 가드
+    if a["has_placeholder_keys"] and key_path is None and not allow_placeholder:
+        raise WorkflowError(
+            "이 덤프는 섹터 %s 의 KeyA 가 FF 껍데기입니다(데이터는 있는데 진짜 키가 가려짐).\n"
+            "이 상태로 복제하면 원본 키가 복제되지 않습니다. 먼저 백도어 복구로 진짜 키가 담긴\n"
+            "덤프/키 파일(hf-mf-%s-key.bin)을 받으세요(원터치 읽기가 이 과정을 합니다).\n"
+            "데이터만이라도 gen1a 매직에 통째로 쓰려면 allow_placeholder 로 진행할 수 있습니다."
+            % (a["placeholder_sectors"], uid))
 
     echo("대상(쓸) 카드를 올려 주세요…")
     wait_for_card(pm3, cfg, echo)
     info = identify(pm3, echo)
-
     pm3.workdir = cfg.out_path
-    if info.magic and ("gen1" in info.magic.lower() or "gen 1" in info.magic.lower()):
-        echo("매직(gen1a) 카드로 판단 — cload 로 통째로 씁니다.")
-        res = pm3.run('hf mf cload -f "%s"' % bin_path, timeout=cfg.timeout)
-    elif info.magic:
-        echo("매직 카드(%s) — restore 로 씁니다." % info.magic)
-        res = pm3.run('hf mf restore -f "%s" --force' % bin_path, timeout=cfg.timeout)
-    else:
-        echo("일반 카드 — 덤프의 키로 restore 를 시도합니다(블록 0 은 보통 못 바꿉니다).")
-        res = pm3.run('hf mf restore -f "%s"' % bin_path, timeout=cfg.timeout)
 
-    if "fail" in res.text.lower() and "wrote" not in res.text.lower():
-        raise WorkflowError("쓰기에 실패했습니다. 카드 종류/키를 확인하세요.\n" + res.text[-600:])
-    echo("복제 완료 — 대상 카드에 %s 를 썼습니다." % bin_path.name)
+    if _is_gen1a(info.magic):
+        echo("gen1a 매직카드 — cload 로 블록0(UID %s·서명)까지 통째로 씁니다." % uid)
+        res = pm3.run('hf mf cload -f "%s"' % bin_path, timeout=cfg.timeout)
+    else:
+        kf = _resolve_key_file(key_path, uid, cfg.out_path, d, echo)
+        cmd = 'hf mf restore --1k -f "%s"' % bin_path
+        if kf:
+            cmd += ' -k "%s"' % kf
+        if uid:
+            cmd += ' --uid %s' % uid
+        if info.magic:
+            echo("매직카드(%s) — restore 로 씁니다(블록0 포함 가능할 수 있음)." % info.magic)
+        else:
+            echo("일반 카드 — restore 로 데이터·키를 씁니다(블록0=UID 는 보통 불가).")
+        res = pm3.run(cmd, timeout=cfg.timeout)
+
+    low = res.text.lower()
+    if ("fail" in low or "error" in low or "can't" in low) and "wrote" not in low and "ok" not in low:
+        raise WorkflowError("쓰기에 실패했을 수 있습니다. pm3 출력 확인:\n" + res.text[-700:])
+    echo("복제 시도 완료 — %s 를 대상 카드에 썼습니다. (hf mf dump 로 되읽어 검증을 권장)" % bin_path.name)
 
 
 # -- 전체 원터치 ------------------------------------------------------------

@@ -40,6 +40,24 @@ def test_recover_and_dump_failure_gives_note(tmp_path):
     assert "fm11rf08s_recovery" in res.note
 
 
+def test_clone_guard_blocks_placeholder_dump(tmp_path):
+    import pytest
+    from amsrfid import dump as D
+    cfg = _cfg(tmp_path)
+    cfg.out_path.mkdir(parents=True)
+    # 데이터는 있는데 KeyA 가 FF 인 껍데기 덤프
+    d = D.Dump()
+    d.data[0:4] = bytes.fromhex("3359C8E4")
+    d.data[60 * 16 : 60 * 16 + 16] = bytes.fromhex("600907924052340020201620202020CC")
+    tb = D.trailer_block(15) * 16
+    d.data[tb : tb + 6] = b"\xff" * 6
+    d.data[tb + 10 : tb + 16] = b"\xff" * 6
+    p = d.save(cfg.out_path / "placeholder.bin")
+    pm3 = FakePm3(workdir=cfg.out_path, magic="Gen 1a")
+    with pytest.raises(workflow.WorkflowError):
+        workflow.clone_to_card(pm3, p, cfg, echo=lambda *a: None)
+
+
 def test_clone_to_card_writes(tmp_path):
     cfg = _cfg(tmp_path)
     pm3 = FakePm3(workdir=cfg.out_path, magic="Gen 1a")

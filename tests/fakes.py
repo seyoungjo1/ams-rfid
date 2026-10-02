@@ -50,13 +50,14 @@ class FakePm3:
                 txt += "Fudan FM11RF08S\nBackdoor coms supported: present (key A396EFA4E24F)\n"
             txt += "Magic capabilities... %s\n" % (self.magic or "n/a")
             return Pm3Result(0, txt, "")
-        if "hf mf autopwn" in joined:
+        if "fm11rf08s_recovery" in joined or "hf mf autopwn" in joined:
+            # FM11RF08S 는 recovery 스크립트, 일반 카드는 autopwn — 둘 다 성공 시 덤프를 떨군다.
             if self.autopwn_ok and self.workdir is not None:
                 Path(self.workdir).mkdir(parents=True, exist_ok=True)
                 (Path(self.workdir) / ("hf-mf-%s-dump.bin" % self.uid)).write_bytes(self._dump_bytes())
                 (Path(self.workdir) / ("hf-mf-%s-key.bin" % self.uid)).write_bytes(b"\x00" * 192)
                 return Pm3Result(0, "[+] found all keys\n[+] Saved to hf-mf-%s-dump.bin\n" % self.uid, "")
-            return Pm3Result(0, "[-] autopwn failed on some sectors\n", "")
+            return Pm3Result(0, "[-] recovery failed on some sectors\n", "")
         if "cload" in joined or "restore" in joined:
             return Pm3Result(0, "[+] wrote all blocks\n", "")
         return Pm3Result(0, "hw version: Proxmark3 RDV4\nos: ...\n", "")

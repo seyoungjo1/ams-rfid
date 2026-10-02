@@ -65,6 +65,7 @@ python -m amsrfid ui         # 브라우저로 쓰는 로컬 웹 UI (run.bat 기
 python -m amsrfid auto       # 원터치: 대기 → 키 복구 → .bin 저장
 python -m amsrfid clone      # 원터치로 읽은 뒤 대상 카드에 복제
 python -m amsrfid clone --from out/ams-....bin   # 그 .bin 을 대상 카드에 복제
+python -m amsrfid analyze <파일.bin>   # .bin 조회: 블록0·서명·키·값·복제가능/껍데기 경고
 python -m amsrfid info       # 카드 종류만 확인
 python -m amsrfid update     # 배포 브랜치에서 최신본 받기 (--check 면 확인만)
 python -m amsrfid version
@@ -73,28 +74,60 @@ python -m amsrfid version
 - `run.bat` : 원터치(= `auto`). 더블클릭용. 인자를 주면 그대로 넘깁니다.
 - `menu.bat` : 메뉴로 열기.
 
-## 키 복구는 어떻게 하나
+## 키 복구는 어떻게 되나 (백도어 원리)
 
-FM11RF08S 는 MIFARE Classic 의 nested 공격을 막는 **정적 암호화 nonce** 대응이 들어간
-칩입니다. 다만 Fudan 계열에 공개된 **백도어 키**(`A396EFA4E24F`, 2024 Teuwen 연구)가 있어,
-Proxmark3 Iceman 의 `hf mf autopwn` 이 이를 활용해 전 섹터 키를 복구하고 덤프까지 떨굽니다.
-이 도구는 그 `hf mf autopwn` 을 불러 결과 `.bin` 을 `out/` 에 보관합니다.
+FM11RF08S 는 MIFARE Classic 의 nested 공격을 막는 **정적 암호화 nonce(static encrypted
+nonce)** 대응이 들어간 칩입니다. 그래서 일반 `nested`/`autopwn` 으로는 사용자 키가 안 풀립니다.
 
-`autopwn` 이 일부 섹터를 못 풀면, pm3 에 들어 있는 전용 복구 스크립트로 다시 시도하라고
-안내합니다:
+다만 Fudan 계열 전 제품에 **공개된 하드웨어 백도어 키**가 있습니다
+(2024, Philippe Teuwen/Quarkslab · [IACR 2024/1275](https://eprint.iacr.org/2024/1275)):
 
-```
-pm3 셸에서:  script run fm11rf08s_recovery
-```
+| 칩 | 백도어 키 |
+|---|---|
+| FM11RF08S | `A396EFA4E24F` |
+| FM11RF08 | `A31667A8CEC1` |
+| FM11RF32N | `518B3354E760` |
+
+복구 흐름(Proxmark3 Iceman `fm11rf08s_recovery` 스크립트가 하는 일):
+
+1. **백도어 인증** — 섹터의 진짜 키를 몰라도 백도어 키로 인증해 **데이터를 읽는다**.
+   단, 이때 읽히는 건 데이터일 뿐, KeyA 는 카드에서 읽히지 않는다.
+2. **정적 nonce 수집** — `hf mf isen --collect_fm11rf08s_with_data` 로 섹터별 암호화 nonce 를 모은다.
+3. **오프라인 솔버** — `staticnested_2x1nt_rf08s` 로 그 nonce 에서 **진짜 KeyA/KeyB 를 복구**한다
+   (같은 키가 3개 이상 섹터/카드에 재사용되면 수 분 안에 풀린다).
+4. 결과를 `hf-mf-<UID>-key.bin`(진짜 키) + `hf-mf-<UID>-dump.bin` 으로 떨군다.
+
+이 도구는 FM11RF08S 가 감지되면 **`script run fm11rf08s_recovery -x -y`** 를 부르고(일반
+MIFARE Classic 은 `hf mf autopwn`), 나온 `.bin` 을 `out/` 에 `ams-<UID>-<시각>.bin` 으로 보관합니다.
+
+### ⚠️ "껍데기 키" 함정 (중요)
+
+백도어로 **데이터만 읽은** 덤프는, 트레일러의 KeyA 자리가 진짜 키가 아니라 `FFFFFFFFFFFF`
+**껍데기**로 채워져 있습니다(KeyA 는 원래 안 읽히므로). 이런 덤프를 그대로 복제하면 **원본 키가
+복제되지 않습니다.** `analyze` 는 "데이터는 있는데 KeyA 가 FF 인 섹터"를 찾아 이 경우를 경고하고,
+`clone` 은 기본적으로 막습니다. **먼저 백도어 복구로 진짜 키가 담긴 덤프/키 파일을 받아야** 제대로
+복제됩니다. (예: 같은 카드라도 복구 전 덤프는 섹터 트레일러가 `FFFFFFFFFFFF...`, 복구 후 덤프는
+`23C7F6BAE3EB...` 처럼 진짜 키가 들어 있음.)
 
 ## 복제(쓰기)
 
-떠 둔 `.bin` 을 대상 카드에 씁니다. 대상 카드 종류를 `hf mf info` 로 보고 방식을 고릅니다.
+`clone` 은 `.bin`(과 진짜 키)을 대상 카드에 씁니다. `hf mf info` 로 대상 종류를 보고 방식을 고릅니다.
 
-- **매직 카드(gen1a 등)** : `hf mf cload` 로 블록 0(UID)까지 통째로 씁니다 — UID 까지 똑같이
-  만들 수 있습니다.
-- **일반/정품 FM11RF08S** : `hf mf restore` 로 덤프 안 트레일러의 키를 써서 블록을 되씁니다.
-  제조사 블록(블록 0, UID)은 보통 못 바꿉니다.
+- **gen1a 매직카드** → `hf mf cload -f <dump>` : 인증 없이 **블록 0(UID·서명)까지 통째로** 씁니다.
+  가장 확실한 복제 경로입니다(단, gen1a 는 일반 MFC 라 FM11RF08S 의 정적-nonce 동작까지
+  흉내 내지는 못합니다 — 저장 내용·UID·키는 동일).
+- **일반/정품 카드** → `hf mf restore --1k --uid <UID> -k <keyfile> -f <dump>` : 키 파일로 대상을
+  인증해 데이터·키를 되씁니다. 제조사 블록(블록 0, UID)은 보통 못 바꿉니다.
+
+진짜 키 소스 우선순위: `--key` 로 준 키 파일 → `out/hf-mf-<UID>-key.bin`(복구 결과) →
+덤프 트레일러에서 생성. 껍데기 덤프를 데이터만이라도 gen1a 에 쓰려면 `clone --force-placeholder`.
+
+### 블록 0 과 서명
+
+FM11RF08S 블록 0 = UID(4) · BCC(1) · SAK(1) · ATQA(2) · 제조사 바이트(8)이고, 제조사 바이트
+안에 **UID 와 묶인 서명(signature)으로 보이는 6바이트**가 들어 있습니다(정확한 생성식은 비공개).
+그래서 UID 를 바꾸면 서명이 어긋나므로, 서명을 검증하는 시스템까지 속이려면 블록 0 을 **그대로**
+옮겨야 하고 — 그건 블록 0 을 쓸 수 있는 매직카드(gen1a cload 등)에서만 됩니다.
 
 ## 설정 (`amsrfid.toml`, 선택)
 
