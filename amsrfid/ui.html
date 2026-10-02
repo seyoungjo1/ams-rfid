@@ -99,6 +99,13 @@
   </div>
 
   <div class="card">
+    <h2>처음 한 번 — 전체 설정</h2>
+    <button class="btn" id="btnSetup" style="width:100%">⚙️ 드라이버·클라이언트·펌웨어 한 번에 설정</button>
+    <div class="hint">Proxmark3 를 꽂고 누르면 드라이버 설치(필요시 UAC) → 클라이언트 찾기 →
+      펌웨어 확인까지 알아서 합니다. 이미 다 돼 있으면 건너뜁니다.</div>
+  </div>
+
+  <div class="card">
     <h2>원터치 읽기</h2>
     <button class="btn primary" id="btnAuto">🔓 꽂고 올린 카드 읽어서 .bin 저장</button>
     <div class="hint">Proxmark3 를 USB 에 꽂고(아무것도 안 떠 있어도 됨) 버튼을 누른 뒤,
@@ -139,7 +146,7 @@
 
   function setBusy(b){
     busy = b;
-    ["btnAuto","btnRefresh","btnUpdate"].forEach(function(id){ $(id).disabled = b; });
+    ["btnSetup","btnAuto","btnRefresh","btnUpdate"].forEach(function(id){ $(id).disabled = b; });
     document.querySelectorAll(".btnClone").forEach(function(el){ el.disabled = b; });
   }
   function human(n){
@@ -302,6 +309,7 @@
     reader.readAsArrayBuffer(file);
   }
 
+  $("btnSetup").onclick = function(){ run("setup", function(){ return api("POST","/api/setup"); }); };
   $("btnAuto").onclick = function(){ run("auto", function(){ return api("POST","/api/auto"); }); };
   $("btnUpdate").onclick = function(){ run("update", function(){ return api("POST","/api/update"); }); };
   $("btnRefresh").onclick = loadDumps;

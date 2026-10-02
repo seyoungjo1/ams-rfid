@@ -178,7 +178,7 @@ class App:
             return {"ok": False, "error": "그 덤프 파일을 찾을 수 없습니다: %s" % name}
 
         def target(job: Job) -> None:
-            pm3 = Pm3.locate(self.cfg.pm3_path or None, self.cfg.port or None, self.cfg.out_path)
+            pm3 = Pm3.locate(self.cfg.pm3_path or None, self.cfg.port or None, self.cfg.out_path, deep=True)
             workflow.wait_for_device(pm3, self.cfg, job.log)
             workflow.clone_to_card(pm3, src, self.cfg, job.log)
             job.result = {"wrote": name}
@@ -190,6 +190,16 @@ class App:
             update.run(check_only=False, root=self.cfg.root, echo=job.log)
 
         return self._start("update", target)
+
+    def start_setup(self) -> dict[str, Any]:
+        from . import setup
+        def target(job: Job) -> None:
+            res = setup.bootstrap(self.cfg, echo=job.log, do_flash=None)
+            self._dev_at = 0           # 상태 캐시 비우기
+            if not res.get("ready"):
+                job.error = "설정이 끝나지 않았습니다(클라이언트 없음 등)."
+
+        return self._start("setup", target)
 
     def job_snapshot(self, since: int) -> dict[str, Any]:
         if self.job is None:
@@ -270,6 +280,8 @@ def _make_handler(app: App):
                 return self._send_json(app.start_update())
             if path == "/api/driver":
                 return self._send_json(app.install_driver())
+            if path == "/api/setup":
+                return self._send_json(app.start_setup())
             if path == "/api/clone":
                 name = str(self._body_json().get("name") or "")
                 return self._send_json(app.start_clone(name))

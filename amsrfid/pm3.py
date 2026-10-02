@@ -76,8 +76,7 @@ def _path_txt() -> str:
         return ""
 
 
-def find_client(configured: str | None = None) -> str:
-    """pm3 실행 파일 경로를 돌려준다. 못 찾으면 DeviceNotFound."""
+def _cheap_candidates(configured: str | None) -> list[str]:
     cands: list[str] = []
     for c in (configured, os.environ.get("AMSRFID_PM3"), _path_txt()):
         if c:
@@ -94,9 +93,103 @@ def find_client(configured: str | None = None) -> str:
                 pass
     else:
         cands.extend(_NIX_CANDIDATES)
-    for c in cands:
+    return cands
+
+
+# 깊은 탐색에서 건너뛸(느리고 의미 없는) 디렉터리 이름들.
+_SKIP_DIRS = {
+    "windows", "$recycle.bin", "system volume information", "node_modules", ".git",
+    "appdata", "winsxs", "assembly", "installer", "temp", "tmp", "cache",
+    "microsoft", "packages", "program files (arm)",
+}
+_TARGET_NAMES = {"proxmark3.exe", "pm3.bat", "pm3", "proxmark3"}
+
+
+def _scan_roots() -> list[Path]:
+    roots: list[Path] = []
+    if os.name == "nt":
+        # 사용자 폴더 먼저(보통 여기에 풀어 둠), 그다음 고정 드라이브 루트.
+        for env in ("USERPROFILE", "LOCALAPPDATA", "ProgramFiles", "ProgramFiles(x86)"):
+            v = os.environ.get(env)
+            if v:
+                roots.append(Path(v))
+        import string
+        for d in string.ascii_uppercase:
+            p = Path("%s:\\" % d)
+            try:
+                if p.exists():
+                    roots.append(p)
+            except OSError:
+                pass
+    else:
+        for v in (os.environ.get("HOME"), "/opt", "/usr/local"):
+            if v:
+                roots.append(Path(v))
+    # 중복 제거(순서 유지)
+    seen, out = set(), []
+    for r in roots:
+        k = str(r).lower()
+        if k not in seen:
+            seen.add(k)
+            out.append(r)
+    return out
+
+
+def deep_find_client(max_dirs: int = 60000, max_depth: int = 7) -> str | None:
+    """흔한 위치에서 못 찾았을 때, 드라이브/사용자 폴더를 제한적으로 뒤져 pm3 실행 파일을 찾는다.
+
+    사용자가 '어딘가 풀어 둔' Proxmark3 를 자동으로 찾아내기 위한 마지막 수단.
+    깊이·개수를 제한하고 시스템/거대 폴더는 건너뛰어 과하지 않게 돈다. 찾으면 그 경로를
+    pm3_path.txt 에 적어 다음부터는 즉시 찾게 한다.
+    """
+    seen_dirs = 0
+    hit: str | None = None
+    for root in _scan_roots():
+        base_depth = len(root.parts)
+        try:
+            walker = os.walk(root)
+        except OSError:
+            continue
+        for cur, dirs, files in walker:
+            seen_dirs += 1
+            if seen_dirs > max_dirs:
+                break
+            depth = len(Path(cur).parts) - base_depth
+            if depth >= max_depth:
+                dirs[:] = []
+            # 시스템/거대 폴더는 안 들어간다
+            dirs[:] = [d for d in dirs if d.lower() not in _SKIP_DIRS and not d.startswith("$")]
+            low = {f.lower(): f for f in files}
+            for target in ("proxmark3.exe", "pm3.bat", "pm3", "proxmark3"):
+                if target in low:
+                    cand = str(Path(cur) / low[target])
+                    if Path(cand).is_file():
+                        hit = cand
+                        break
+            if hit:
+                break
+        if hit:
+            break
+    if hit:
+        try:
+            (_root() / "pm3_path.txt").write_text(hit, encoding="utf-8")
+        except OSError:
+            pass
+    return hit
+
+
+def find_client(configured: str | None = None, deep: bool = False) -> str:
+    """pm3 실행 파일 경로를 돌려준다. 못 찾으면 DeviceNotFound.
+
+    deep=True 면 흔한 위치에서 못 찾았을 때 드라이브/사용자 폴더를 뒤져(느림) 찾아낸다.
+    """
+    for c in _cheap_candidates(configured):
         if c and Path(c).is_file():
             return c
+    if deep:
+        found = deep_find_client()
+        if found:
+            return found
     raise DeviceNotFound(
         "Proxmark3 클라이언트(pm3)를 찾지 못했습니다. 다음 중 하나로 경로를 알려 주세요:\n"
         "  · 폴더에 pm3_path.txt 를 만들고 pm3.bat(또는 proxmark3.exe) 전체 경로를 한 줄로 적기\n"
@@ -229,6 +322,31 @@ def install_driver(inf: str | Path | None = None) -> tuple[bool, str]:
     return (False, "드라이버 설치 실패(코드 %s). %s" % (code or "?", err[-300:]))
 
 
+def find_firmware_images(client: str) -> dict:
+    """클라이언트 근처에서 펌웨어 이미지(fullimage.elf·bootrom.elf)를 찾는다.
+
+    ProxSpace/릴리스 배치: proxmark3.exe 는 보통 client/ 에, .elf 는 armsrc/obj·bootrom/obj
+    또는 릴리스면 바로 옆에 있다. 클라이언트 폴더의 위쪽 3단계까지 뒤진다.
+    """
+    out = {"fullimage": None, "bootrom": None}
+    base = Path(client).resolve().parent
+    roots = [base] + list(base.parents)[:3]
+    for root in roots:
+        try:
+            for name in ("fullimage.elf", "bootrom.elf"):
+                key = "fullimage" if name.startswith("full") else "bootrom"
+                if out[key]:
+                    continue
+                hits = sorted(root.glob("**/" + name))
+                if hits:
+                    out[key] = str(hits[0])
+        except OSError:
+            pass
+        if out["fullimage"] and out["bootrom"]:
+            break
+    return out
+
+
 @dataclass
 class Pm3Result:
     returncode: int
@@ -256,9 +374,10 @@ class Pm3:
         port: str | None = None,
         workdir: Path | None = None,
         extra_args: list[str] | None = None,
+        deep: bool = False,
     ) -> "Pm3":
         return cls(
-            client=find_client(configured),
+            client=find_client(configured, deep=deep),
             port=port,
             workdir=workdir,
             extra_args=list(extra_args or []),
@@ -302,6 +421,27 @@ class Pm3:
         err = (done.stderr or b"").decode("utf-8", "replace")
         return Pm3Result(done.returncode, out, err)
 
+    def run_raw(self, extra: list[str], timeout: float = 300) -> Pm3Result:
+        """`-c` 없이 클라이언트를 직접 호출한다(플래싱 등: proxmark3 <port> --flash ...)."""
+        args = [self.client]
+        if not self._is_wrapper():
+            port = self.port or _auto_port()
+            if port:
+                args.append(port)
+        args.extend(extra)
+        try:
+            done = subprocess.run(
+                args, cwd=str(self.workdir) if self.workdir else None,
+                capture_output=True, timeout=timeout,
+            )
+        except FileNotFoundError as e:
+            raise DeviceNotFound("pm3 를 실행하지 못했습니다: %s" % e) from None
+        except subprocess.TimeoutExpired:
+            raise Pm3Error("명령이 %.0f초 안에 끝나지 않았습니다." % timeout) from None
+        out = (done.stdout or b"").decode("utf-8", "replace")
+        err = (done.stderr or b"").decode("utf-8", "replace")
+        return Pm3Result(done.returncode, out, err)
+
     # -- 장치/카드 상태 ----------------------------------------------------
 
     def device_present(self) -> bool:
@@ -312,6 +452,21 @@ class Pm3:
             return False
         t = res.text.lower()
         return ("proxmark3" in t and "os:" in t) or "firmware" in t or "client:" in t
+
+    def firmware_version(self) -> str:
+        """`hw version` 출력을 돌려준다(펌웨어/클라이언트 버전 확인용)."""
+        try:
+            return self.run("hw version", timeout=30).text
+        except Pm3Error:
+            return ""
+
+    def supports_fm11rf08s(self) -> bool:
+        """펌웨어가 FM11RF08S 백도어/isen 을 지원하는지(hf mf isen 도움말로 간접 확인)."""
+        try:
+            t = self.run("hf mf isen --help", timeout=20).text.lower()
+        except Pm3Error:
+            return False
+        return "collect_fm11rf08s" in t or "fm11rf08s" in t
 
     def card_present(self) -> bool:
         """14a 태그(카드)가 안테나 위에 있는지."""

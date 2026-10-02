@@ -281,6 +281,7 @@ def one_touch(cfg: Config, echo: Echo = print) -> OneTouchResult:
         configured=cfg.pm3_path or None,
         port=cfg.port or None,
         workdir=cfg.out_path,
+        deep=True,                      # 흔한 위치에 없으면 드라이브에서 찾아낸다(자동)
     )
     echo("pm3 클라이언트: %s" % pm3.client)
     wait_for_device(pm3, cfg, echo)

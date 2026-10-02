@@ -31,6 +31,24 @@ automation)** 와 똑같이 맞췄습니다:
 
 이 도구는 추가 파이썬 패키지가 거의 필요 없습니다(표준 라이브러리만 사용).
 
+## 처음 한 번 — 전체 설정 (딸깍)
+
+Proxmark3 를 꽂고 웹 UI 의 **「⚙️ 드라이버·클라이언트·펌웨어 한 번에 설정」**(또는
+`python -m amsrfid setup`) 한 번이면, **공식 Proxmark3 도구를 엮어** 필요한 것만 알아서 합니다:
+
+1. **드라이버** — 장치는 보이는데 COM 포트가 없으면 공식 `drivers/proxmark3.inf` 를
+   `pnputil` 로 설치(관리자 UAC). 이미 되어 있으면 건너뜀.
+2. **클라이언트** — `proxmark3.exe`/`pm3` 를 흔한 위치에서 찾고, 없으면 **드라이브를 뒤져**
+   이미 설치된 것을 찾아냅니다(찾으면 `pm3_path.txt` 에 적어 다음부턴 즉시). 정말 없으면
+   설치 안내.
+3. **펌웨어** — FM11RF08S 백도어를 지원 안 하는 펌웨어면 공식 `--flash` 로 fullimage 를
+   올립니다(이미 지원하면 건너뜀). 부트로더(bootrom)까지 바꿔야 하면 버튼 누른 채 꽂는
+   물리 단계가 한 번 필요합니다.
+
+그다음 **「원터치 읽기」** 를 누르면 카드 읽기 → 백도어 키복구 → `.bin` 저장까지 갑니다.
+(`run.bat` 은 켤 때 드라이버·클라이언트 설정을 자동으로 하고, 펌웨어 플래싱은 되돌릴 수
+없으니 UI 의 '전체 설정' 버튼으로 눌러 직접 확인하며 진행하도록 두었습니다.)
+
 ## pm3 인식 / 드라이버 (Windows)
 
 이 도구는 **공식 Proxmark3 방식 그대로** 꽂힌 장치를 자동으로 찾습니다:
@@ -84,7 +102,9 @@ python -m amsrfid clone      # 원터치로 읽은 뒤 대상 카드에 복제
 python -m amsrfid clone --from out/ams-....bin   # 그 .bin 을 대상 카드에 복제
 python -m amsrfid analyze <파일.bin>   # .bin 조회: 블록0·서명·키·값·복제가능/껍데기 경고
 python -m amsrfid import <파일.bin>    # 외부 .bin 을 out 폴더로 불러오기(+조회)
+python -m amsrfid setup      # 전체 설정: 드라이버→클라이언트 찾기→(필요시)펌웨어 · --flash/--no-flash
 python -m amsrfid driver     # Proxmark3 드라이버 설치(Windows) · --if-needed 로 필요할 때만
+python -m amsrfid flash      # 펌웨어를 최신으로 플래싱(공식 --flash, fullimage)
 python -m amsrfid info       # 카드 종류만 확인
 python -m amsrfid update     # 배포 브랜치에서 최신본 받기 (--check 면 확인만)
 python -m amsrfid version

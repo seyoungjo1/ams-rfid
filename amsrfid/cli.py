@@ -48,6 +48,12 @@ def build_parser() -> argparse.ArgumentParser:
     pd.add_argument("--if-needed", action="store_true",
                     help="장치는 보이는데 드라이버가 없을 때만 설치(조용히 통과)")
 
+    ps = sub.add_parser("setup", help="전체 설정: 드라이버→클라이언트→(필요시)펌웨어")
+    ps.add_argument("--flash", action="store_true", help="펌웨어를 무조건 플래싱")
+    ps.add_argument("--no-flash", action="store_true", help="펌웨어 플래싱을 건너뜀")
+
+    sub.add_parser("flash", help="펌웨어를 최신으로 플래싱(공식 --flash, fullimage)")
+
     sub.add_parser("info", help="카드 종류만 확인")
 
     pu = sub.add_parser("update", help="배포 브랜치에서 최신본 받기")
@@ -68,7 +74,7 @@ def cmd_auto(cfg: Config) -> int:
 
 def cmd_clone(cfg: Config, src: str | None, key: str | None = None,
               force_placeholder: bool = False) -> int:
-    pm3 = Pm3.locate(cfg.pm3_path or None, cfg.port or None, cfg.out_path)
+    pm3 = Pm3.locate(cfg.pm3_path or None, cfg.port or None, cfg.out_path, deep=True)
     workflow.wait_for_device(pm3, cfg, print)
     if src is None:
         workflow.wait_for_card(pm3, cfg, print)
@@ -102,6 +108,25 @@ def cmd_driver(cfg: Config, if_needed: bool) -> int:
     return 0 if ok else 1
 
 
+def cmd_setup(cfg: Config, flash: bool, no_flash: bool) -> int:
+    from . import setup
+    do_flash = True if flash else (False if no_flash else None)
+    res = setup.bootstrap(cfg, print, do_flash=do_flash)
+    return 0 if res.get("ready") else 1
+
+
+def cmd_flash(cfg: Config) -> int:
+    from . import setup
+    from .pm3 import find_client, DeviceNotFound
+    try:
+        client = find_client(cfg.pm3_path or None, deep=True)
+    except DeviceNotFound as e:
+        print(str(e))
+        return 1
+    ok = setup.flash_if_needed(cfg, client, print, force=True)
+    return 0 if ok else 1
+
+
 def cmd_import(cfg: Config, file: str) -> int:
     from . import dump as D
     src = Path(file)
@@ -120,7 +145,7 @@ def cmd_import(cfg: Config, file: str) -> int:
 
 
 def cmd_info(cfg: Config) -> int:
-    pm3 = Pm3.locate(cfg.pm3_path or None, cfg.port or None, cfg.out_path)
+    pm3 = Pm3.locate(cfg.pm3_path or None, cfg.port or None, cfg.out_path, deep=True)
     workflow.wait_for_device(pm3, cfg, print)
     workflow.wait_for_card(pm3, cfg, print)
     info = workflow.identify(pm3, print)
@@ -150,6 +175,10 @@ def main(argv: list[str] | None = None) -> int:
             return cmd_import(cfg, args.file)
         if cmd == "driver":
             return cmd_driver(cfg, args.if_needed)
+        if cmd == "setup":
+            return cmd_setup(cfg, args.flash, args.no_flash)
+        if cmd == "flash":
+            return cmd_flash(cfg)
         if cmd == "info":
             return cmd_info(cfg)
         if cmd == "update":
