@@ -32,7 +32,8 @@ try {
         Move-Item $Unpacked $PythonRoot
     }
     # Ignore registry, global Python, PYTHONPATH and user-site packages.
-    @('.', 'Lib', 'DLLs', 'Lib/site-packages', '../..', 'import site') | Set-Content -Encoding ASCII (Join-Path $PythonRoot 'python313._pth')
+    $SearchPaths = @('.', 'Lib', 'DLLs', 'Lib/site-packages', [IO.Path]::GetFullPath($ProjectRoot), 'import site')
+    [IO.File]::WriteAllLines((Join-Path $PythonRoot 'python313._pth'), $SearchPaths, (New-Object Text.UTF8Encoding($false)))
     $ReqFile = Join-Path $ProjectRoot 'requirements.txt'
     $ReqHash = (Get-FileHash $ReqFile -Algorithm SHA256).Hash
     $Marker = Join-Path $PythonRoot 'dependencies.sha256'
@@ -41,7 +42,7 @@ try {
         Write-Host '[3/3] Preparing private Python dependencies...'
         & $PythonExe -X utf8 -m pip --isolated install --disable-pip-version-check --no-warn-script-location --only-binary=:all: -r $ReqFile
         if ($LASTEXITCODE -ne 0) { throw 'Dependency preparation failed. See the message above.' }
-        & $PythonExe -X utf8 -c 'import serial.tools.list_ports, py7zr, amsrfid.web'
+        & $PythonExe -X utf8 -c 'import sys; print(sys.executable); print(sys.path); import serial.tools.list_ports, py7zr, amsrfid.web'
         if ($LASTEXITCODE -ne 0) { throw 'Private runtime import validation failed.' }
         $ReqHash | Set-Content -Encoding ASCII $Marker
     }

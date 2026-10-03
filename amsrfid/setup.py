@@ -62,6 +62,9 @@ def prepare_device(cfg: Config, echo: Echo = print) -> P.Pm3:
         port = cfg.port or None
     cfg.pm3_path = client
     pm3 = P.Pm3(client=client, port=port, workdir=cfg.out_path, echo=echo)
+    if runtime.supported_platform() and not cfg.use_system_client:
+        # The managed build supports this flag: ignore old ~/.proxmark3 preferences.
+        pm3.extra_args.append("--incognito")
     workflow.wait_for_device(pm3, cfg, echo)
     version = pm3.run("hw version", timeout=30).text
     if not re.search(r"(?:\bos:|\bOS\.+)\s*\S", version, re.I):

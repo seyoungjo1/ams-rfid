@@ -16,7 +16,7 @@ if __name__ == "__main__":
         pm3 = Pm3(client=client, workdir=root / "out")
         help_result = pm3._run_subprocess([client, "-h"], 30)
         assert help_result.returncode == 0, help_result.text
-        result = pm3._run_subprocess([client, "-c", "hf mf sen -h"], 30)
+        result = pm3._run_subprocess([client, "--incognito", "-c", "hf mf sen -h"], 30)
         # CLIExecWithReturn returns PM3_ESOFT (-10) for help as well as parse errors.
         # Windows exposes negative C exit codes as unsigned 32-bit values.
         assert result.returncode in (0, -10, 0xFFFFFFF6), (result.returncode, result.text)
