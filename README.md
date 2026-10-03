@@ -2,7 +2,7 @@
 
 Proxmark3 **Easy**로 MIFARE Classic 1K / FM11RF08S 원본 카드를 읽고, 대상 카드에 쓴 뒤 되읽어 확인하는 로컬 도구입니다.
 
-## 0.3.1 — Windows에 아무것도 설치하지 않은 상태에서 시작
+## 0.3.2 — Windows에 아무것도 설치하지 않은 상태에서 시작
 
 1. 이 저장소 폴더를 통째로 새 폴더에 압축 해제하고 Easy를 데이터 USB 케이블로 연결합니다.
 2. `run.bat`을 실행합니다. 공식 Python 런타임과 필요한 모듈을 폴더 내부에 자동 준비합니다.
@@ -72,7 +72,7 @@ python -m amsrfid version
 
 ## 업데이트와 테스트
 
-`token.txt`에 GitHub 토큰이 있으면 실행 시 `claude/lucid-hamilton-2c2r4r`에서 업데이트합니다. 실행 중인 배치 파일이 변경된 경우 안내된 `run_v031.bat`을 한 번 실행하면 새 실행기로 바뀝니다. 사용자 설정, 토큰, `.runtime`, 저장 덤프는 업데이트에서 보존합니다.
+`token.txt`에 GitHub 토큰이 있으면 실행 시 `claude/lucid-hamilton-2c2r4r`에서 업데이트합니다. 실행 중인 배치 파일이 변경된 경우 안내된 `run_v032.bat`을 한 번 실행하면 새 실행기로 바뀝니다. 사용자 설정, 토큰, `.runtime`, 저장 덤프는 업데이트에서 보존합니다. 0.3.2는 0.3.1 이후의 전용 Python 경로 수정과 기존 pm3 개인 설정 격리까지 포함하므로, 이미 0.3.1을 받은 경우에도 자동 업데이트됩니다.
 
 ```text
 python -m pip install pytest -r requirements.txt
