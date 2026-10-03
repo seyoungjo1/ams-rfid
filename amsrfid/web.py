@@ -182,7 +182,7 @@ class App:
             return {"ok": False, "error": "그 덤프 파일을 찾을 수 없습니다: %s" % name}
 
         def target(job: Job) -> None:
-            pm3 = Pm3.locate(self.cfg.pm3_path or None, self.cfg.port or None, self.cfg.out_path, deep=True)
+            pm3 = Pm3.locate(self.cfg.pm3_path or None, self.cfg.port or None, self.cfg.out_path, deep=False)
             workflow.wait_for_device(pm3, self.cfg, job.log)
             workflow.clone_to_card(pm3, src, self.cfg, job.log)
             job.result = {"wrote": name}

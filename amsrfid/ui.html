@@ -356,7 +356,8 @@
   };
 
   loadStatus(); loadDumps();
-  setInterval(loadStatus, 4000);
+  // 상태 폴링은 드물게, 그리고 작업(읽기/복제/설정) 중에는 쉰다 — 장치를 계속 들쑤시지 않게.
+  setInterval(function(){ if(!busy) loadStatus(); }, 15000);
 })();
 </script>
 </body>

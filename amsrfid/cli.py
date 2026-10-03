@@ -76,7 +76,7 @@ def cmd_auto(cfg: Config) -> int:
 
 def cmd_clone(cfg: Config, src: str | None, key: str | None = None,
               force_placeholder: bool = False) -> int:
-    pm3 = Pm3.locate(cfg.pm3_path or None, cfg.port or None, cfg.out_path, deep=True)
+    pm3 = Pm3.locate(cfg.pm3_path or None, cfg.port or None, cfg.out_path, deep=False)
     workflow.wait_for_device(pm3, cfg, print)
     if src is None:
         workflow.wait_for_card(pm3, cfg, print)
@@ -121,7 +121,7 @@ def cmd_flash(cfg: Config) -> int:
     from . import setup
     from .pm3 import find_client, DeviceNotFound
     try:
-        client = find_client(cfg.pm3_path or None, deep=True)
+        client = find_client(cfg.pm3_path or None, deep=False)
     except DeviceNotFound as e:
         print(str(e))
         return 1
@@ -173,7 +173,7 @@ def cmd_import(cfg: Config, file: str) -> int:
 
 
 def cmd_info(cfg: Config) -> int:
-    pm3 = Pm3.locate(cfg.pm3_path or None, cfg.port or None, cfg.out_path, deep=True)
+    pm3 = Pm3.locate(cfg.pm3_path or None, cfg.port or None, cfg.out_path, deep=False)
     workflow.wait_for_device(pm3, cfg, print)
     workflow.wait_for_card(pm3, cfg, print)
     info = workflow.identify(pm3, print)
