@@ -57,7 +57,8 @@ def build_parser() -> argparse.ArgumentParser:
 
     sub.add_parser("diag", help="진단: 지금 도구가 보는 COM 포트·USB 장치·클라이언트를 전부 출력")
 
-    sub.add_parser("connect", help="연결 확인: hw version 을 1회 실행(카드 읽기/쓰기 없음)")
+    pc = sub.add_parser("connect", help="연결 확인: hw version 을 1회 실행(카드 읽기/쓰기 없음)")
+    pc.add_argument("--debug", action="store_true", help="통신 상세 점검 결과를 out/connection-debug.log 에 저장")
 
     sub.add_parser("info", help="카드 종류만 확인")
 
@@ -211,7 +212,7 @@ def main(argv: list[str] | None = None) -> int:
             return cmd_diag(cfg)
         if cmd == "connect":
             from .setup import check_connection
-            check_connection(cfg)
+            check_connection(cfg, debug=args.debug)
             return 0
         if cmd == "info":
             return cmd_info(cfg)

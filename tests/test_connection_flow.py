@@ -146,6 +146,49 @@ def test_pm3_timeout_keeps_partial_output(tmp_path):
     assert "still-working" in (tmp_path / "last-pm3.log").read_text(encoding="utf-8")
 
 
+def test_handshake_failure_is_not_reported_as_missing_client(tmp_path, monkeypatch):
+    from amsrfid.pm3 import Pm3Result
+    pm3 = Pm3(client="proxmark3.exe", port="COM6", workdir=tmp_path)
+    calls = []
+    def fail(args, timeout):
+        calls.append(args)
+        return Pm3Result(1, "[+] Using UART port COM6\n[!!] ERROR: cannot communicate with the Proxmark3", "")
+    monkeypatch.setattr(pm3, "_run_subprocess", fail)
+    with pytest.raises(Pm3Error, match="포트 COM6 는 열렸지만") as error:
+        pm3.run("hw version")
+    assert "connection-debug.log" in str(error.value)
+    assert len(calls) == 1
+
+
+def test_debug_connection_keeps_failure_report_without_retry(connected_config, monkeypatch):
+    from amsrfid import setup
+    from amsrfid.pm3 import Pm3Result
+    calls = []
+    def fail(self, args, timeout):
+        calls.append(args)
+        return Pm3Result(1, "ERROR: cannot communicate with the Proxmark3", "")
+    monkeypatch.setattr(Pm3, "_run_subprocess", fail)
+    monkeypatch.setattr("amsrfid.pm3._pyserial_ports", lambda: [{"device": "COM_TEST"}])
+    app = web.App(connected_config)
+    assert app.start_connect(debug=True)["ok"]
+    job = wait_job(app)
+    assert not job["ok"]
+    assert not app.status()["connected"]
+    assert len(calls) == 1
+    args = calls[0]
+    assert args[args.index("-d") + 1] == "2"
+    assert args[args.index("-c") + 1] == "hw version"
+    assert "--flash" not in args
+    report = (connected_config.out_path / "connection-debug.log").read_text(encoding="utf-8")
+    assert "COM_TEST" in report and "cannot communicate" in report
+
+
+def test_cli_debug_connection(connected_config, monkeypatch):
+    monkeypatch.setattr(cli.Config, "load", lambda: connected_config)
+    assert cli.main(["connect", "--debug"]) == 0
+    assert (connected_config.out_path / "connection-debug.log").is_file()
+
+
 def test_missing_pm3_is_installed_before_read(connected_config, monkeypatch):
     from amsrfid import setup, runtime
     cfg = connected_config

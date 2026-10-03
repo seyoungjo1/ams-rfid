@@ -46,7 +46,7 @@ def ensure_client(cfg: Config, echo: Echo = print, deep: bool = False) -> str | 
     return None
 
 
-def prepare_device(cfg: Config, echo: Echo = print) -> P.Pm3:
+def prepare_device(cfg: Config, echo: Echo = print, *, debug: bool = False) -> P.Pm3:
     """User-started preparation: install missing client, find port, verify version."""
     from . import runtime, workflow
     if runtime.supported_platform() and not cfg.use_system_client:
@@ -65,6 +65,8 @@ def prepare_device(cfg: Config, echo: Echo = print) -> P.Pm3:
     if runtime.supported_platform() and not cfg.use_system_client:
         # The managed build supports this flag: ignore old ~/.proxmark3 preferences.
         pm3.extra_args.append("--incognito")
+    if debug:
+        pm3.extra_args.extend(["-d", "2"])
     workflow.wait_for_device(pm3, cfg, echo)
     version = pm3.run("hw version", timeout=30).text
     if not re.search(r"(?:\bos:|\bOS\.+)\s*\S", version, re.I):
@@ -127,7 +129,32 @@ def bootstrap(cfg: Config, echo: Echo = print, do_flash: bool | None = None) -> 
     return result
 
 
-def check_connection(cfg: Config, echo: Echo = print) -> dict:
-    pm3 = prepare_device(cfg, echo)
+def check_connection(cfg: Config, echo: Echo = print, *, debug: bool = False) -> dict:
+    if debug:
+        import platform
+        from . import __version__
+        lines = []
+        def report(message):
+            lines.append(str(message))
+            echo(message)
+        try:
+            report("통신 상세 점검 · ams-rfid " + __version__)
+            report("OS: " + platform.platform())
+            report("포트 목록: " + repr(P._pyserial_ports()))
+            report("hw version 1회만 실행합니다. 카드 쓰기·펌웨어 변경은 하지 않습니다.")
+            pm3 = prepare_device(cfg, report, debug=True)
+        except Exception as e:
+            report("점검 실패: " + str(e))
+            raise
+        finally:
+            try:
+                cfg.out_path.mkdir(parents=True, exist_ok=True)
+                path = cfg.out_path / "connection-debug.log"
+                path.write_text("\n".join(lines), encoding="utf-8")
+                echo("통신 점검 로그 저장: " + str(path))
+            except OSError:
+                echo("통신 점검 로그를 저장하지 못했습니다. 화면의 로그를 복사하세요.")
+    else:
+        pm3 = prepare_device(cfg, echo)
     return {"client": pm3.client, "port": pm3.port, "connected": True,
             "ready": True, "device_present": True, "flashed": False}

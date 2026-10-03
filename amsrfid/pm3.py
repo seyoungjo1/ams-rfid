@@ -627,6 +627,13 @@ class Pm3:
         # Never replay commands: a write can have completed before disconnection.
         result = self._run_subprocess(self._build_args(commands), timeout)
         if result.returncode != 0 or _looks_disconnected(result.text):
+            if "cannot communicate with the proxmark" in result.text.lower():
+                raise Pm3Error(
+                    "포트 %s 는 열렸지만 장치 통신 검사에 실패했습니다. 클라이언트 설치는 완료된 상태입니다.\n"
+                    "USB를 뽑았다가 Easy 버튼을 누르지 않고 다시 연결한 뒤 '자동 준비·연결 확인'을 실행하세요.\n"
+                    "계속 실패하면 '통신 상세 점검'을 실행하고 out/connection-debug.log 를 확인하세요.\n"
+                    "구형 펌웨어·부트로더 모드·USB 통신 문제를 구분해야 하며, 이 오류만으로 Windows 11이나 드라이버 문제를 확정할 수 없습니다.\n%s"
+                    % (self.port, result.text[-2000:]))
             raise Pm3Error("pm3 실행/연결 실패 (포트 %s, 종료 코드 %s). 다른 pm3 프로그램을 종료하고 경로·COM 포트를 확인하세요.\n%s"
                            % (self.port, result.returncode, result.text[-2000:]))
         return result

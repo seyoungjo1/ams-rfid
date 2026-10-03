@@ -29,7 +29,7 @@
 <div class="actions"><button id="refresh">목록 새로고침</button><button id="import">.bin 불러오기</button><input type="file" id="file" accept=".bin" hidden></div>
 <div id="dumps"></div><pre id="analysis" hidden></pre>
 </section>
-<section><details><summary>연결 점검·업데이트</summary><p class="muted">카드 읽기 전에 연결만 확인하려면 ‘자동 준비·연결 확인’을 누르세요.</p><div class="actions"><button id="connect">자동 준비·연결 확인</button><button id="diag">진단 정보</button><button id="update">업데이트</button></div><p class="muted">실행 로그는 out/last-pm3.log에도 저장됩니다. 장치 펌웨어는 자동으로 변경하지 않습니다.</p></details></section>
+<section><details><summary>연결 점검·업데이트</summary><p class="muted">카드 읽기 전에 연결만 확인하려면 ‘자동 준비·연결 확인’을 누르세요.</p><div class="actions"><button id="connect">자동 준비·연결 확인</button><button id="debug">통신 상세 점검</button><button id="diag">진단 정보</button><button id="update">업데이트</button></div><p class="muted">COM 포트가 감지돼도 통신에 실패하면 USB를 뽑고 Easy 버튼을 누르지 않은 채 다시 연결하세요. 계속 실패하면 ‘통신 상세 점검’을 한 번 실행하세요. 상세 로그는 out/connection-debug.log, 최근 실행 로그는 out/last-pm3.log에 저장됩니다. 장치 펌웨어는 자동으로 변경하지 않습니다.</p></details></section>
 <footer><p class="muted"><small>로컬 실행 · 실행한 콘솔 창을 닫으면 서버가 종료됩니다.</small></p></footer>
 </main>
 <script>
@@ -38,7 +38,7 @@
 var $=function(id){return document.getElementById(id);},busy=false,since=0,polling=false,lastJob=null,pending=null,generation=0;
 var phases={preparing:[0,"준비·연결 중","클라이언트 설치와 장치 연결을 확인하고 있습니다."],reading:[1,"원본 카드 읽는 중","원본 카드를 안테나 위에 그대로 두세요."],recovering:[1,"원본 키·데이터 복구 중","수 분에서 수십 분 걸릴 수 있습니다. 아래 실시간 로그를 확인하세요."],awaiting_target:[2,"카드 교체 대기","원본 카드를 치우고 대상 카드를 올려 주세요."],writing:[3,"대상 카드에 쓰는 중","카드와 USB 케이블을 움직이지 마세요."],verifying:[4,"되읽어 검증하는 중","쓴 내용을 다시 읽어 원본과 비교하고 있습니다."],complete:[4,"작업 완료","아래 결과를 확인하세요."],failed:[-1,"작업 중단","아래 오류와 실행 로그를 확인하세요. 자동으로 재실행하지 않습니다."]};
 function api(path,body){return fetch(path,{method:body===undefined?"GET":"POST",headers:body===undefined?{}:{"Content-Type":"application/json"},body:body===undefined?undefined:JSON.stringify(body)}).then(function(r){if(!r.ok)throw new Error("서버 오류 "+r.status);return r.json();});}
-function lock(value){busy=value;["start","write","connect","diag","update","import"].forEach(function(id){$(id).disabled=value;});document.querySelectorAll(".writeDump").forEach(function(b){b.disabled=value;});}
+function lock(value){busy=value;["start","write","connect","debug","diag","update","import"].forEach(function(id){$(id).disabled=value;});document.querySelectorAll(".writeDump").forEach(function(b){b.disabled=value;});}
 function error(message){$("result").textContent=message;$("result").className="error";}
 function showPending(p){pending=p;$("swap").hidden=!p;$("source").textContent=p?("원본 UID "+p.uid+" · "+p.name):"";}
 function status(){return api("/api/status").then(function(s){$("version").textContent="v"+s.version;$("clientState").textContent=s.pm3?"클라이언트 준비됨":"첫 실행 시 자동 설치";showPending(s.pending_write);});}
@@ -65,7 +65,7 @@ function start(path,body){if(busy)return;generation++;lock(true);since=0;lastJob
 function dumps(){api("/api/dumps").then(function(rows){$("dumps").replaceChildren();if(!rows.length){$("dumps").textContent="저장된 파일이 없습니다.";return;}rows.forEach(function(d){var row=document.createElement("div"),name=document.createElement("span"),view=document.createElement("button"),write=document.createElement("button");row.className="dump";name.textContent=d.name;view.textContent="조회";view.onclick=function(){api("/api/analyze?name="+encodeURIComponent(d.name)).then(function(a){$("analysis").hidden=false;$("analysis").textContent=a.report||a.error;});};write.textContent="대상 카드에 쓰기";write.className="writeDump";write.disabled=busy;write.onclick=function(){if(confirm("대상 카드를 올렸나요? 대상 카드 내용을 덮어씁니다.\n파일: "+d.name))start("/api/clone",{name:d.name});};row.append(name,view,write);$("dumps").append(row);});}).catch(function(e){error(e.message);});}
 $("start").onclick=function(){showPending(null);start("/api/wizard/start");};
 $("write").onclick=function(){start("/api/wizard/write",{confirmed:true});};
-$("connect").onclick=function(){start("/api/connect");};$("update").onclick=function(){start("/api/update");};$("refresh").onclick=dumps;
+$("connect").onclick=function(){start("/api/connect");};$("debug").onclick=function(){start("/api/connect/debug");};$("update").onclick=function(){start("/api/update");};$("refresh").onclick=dumps;
 $("diag").onclick=function(){if(busy)return;lock(true);api("/api/diag").then(function(d){$("analysis").hidden=false;$("analysis").textContent=JSON.stringify(d,null,2);}).catch(function(e){error(e.message);}).finally(function(){lock(false);});};
 $("import").onclick=function(){$("file").click();};$("file").onchange=function(){var file=this.files[0];if(!file)return;fetch("/api/import?name="+encodeURIComponent(file.name),{method:"POST",body:file}).then(function(r){return r.json();}).then(function(r){if(!r.ok)error(r.error);else dumps();}).catch(function(e){error(e.message);});this.value="";};
 status().catch(function(e){error(e.message);});dumps();poll();setInterval(poll,800);

@@ -245,11 +245,11 @@ class App:
 
         return self._start("update", target)
 
-    def start_connect(self) -> dict[str, Any]:
+    def start_connect(self, *, debug: bool = False) -> dict[str, Any]:
         from . import setup
         def target(job: Job) -> None:
             self._dev = {}
-            result = setup.check_connection(self.cfg, echo=job.log)
+            result = setup.check_connection(self.cfg, echo=job.log, debug=debug)
             self._dev = {"present": True, "com": result["port"], "connected": True}
             job.result = result
         return self._start("connect", target)
@@ -352,6 +352,8 @@ def _make_handler(app: App):
                 return self._send_json(app.install_driver())
             if path == "/api/connect":
                 return self._send_json(app.start_connect())
+            if path == "/api/connect/debug":
+                return self._send_json(app.start_connect(debug=True))
             if path == "/api/setup":
                 return self._send_json(app.start_setup())
             if path == "/api/clone":
