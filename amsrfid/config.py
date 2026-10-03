@@ -34,6 +34,7 @@ class ConfigError(ValueError):
 
 @dataclass
 class Config:
+    use_system_client: bool = False
     pm3_path: str = ""
     port: str = ""
     outdir: str = "out"
@@ -72,6 +73,7 @@ class Config:
                 raise ConfigError("%s 는 유한한 양수여야 합니다." % key)
             numbers[key] = value
         return cls(
+            use_system_client=data.get("use_system_client") is True,
             pm3_path=str(data.get("pm3_path", "") or ""),
             port=str(data.get("port", "") or ""),
             outdir=str(data.get("outdir", "out") or "out"),

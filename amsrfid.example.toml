@@ -1,3 +1,7 @@
+# Windows defaults to the isolated portable client and automatic port detection.
+# Set true only to deliberately use an existing installation and the settings below.
+use_system_client = false
+
 # 이 파일을 amsrfid.toml 로 복사한 뒤 필요한 줄만 고치세요.
 # 전부 생략해도 기본값으로 돕니다. (amsrfid.toml 은 git·자동업데이트에서 제외됩니다.)
 

@@ -2,10 +2,10 @@
 
 Proxmark3 **Easy**로 MIFARE Classic 1K / FM11RF08S 원본 카드를 읽고, 대상 카드에 쓴 뒤 되읽어 확인하는 로컬 도구입니다.
 
-## 0.3.0 — pm3 별도 설치 없이 시작
+## 0.3.1 — Windows에 아무것도 설치하지 않은 상태에서 시작
 
-1. Easy를 데이터 USB 케이블로 연결합니다.
-2. `run.bat`을 실행합니다.
+1. 이 저장소 폴더를 통째로 새 폴더에 압축 해제하고 Easy를 데이터 USB 케이블로 연결합니다.
+2. `run.bat`을 실행합니다. 공식 Python 런타임과 필요한 모듈을 폴더 내부에 자동 준비합니다.
 3. 원본 카드를 올리고 **원터치 시작**을 누릅니다.
 4. 처음 한 번 Easy용 클라이언트와 DLL을 자동 다운로드·검증·압축 해제합니다.
 5. 연결 확인 → 카드 읽기 → 키 복구 → 덤프 저장이 진행됩니다.
@@ -18,9 +18,9 @@ Proxmark3 **Easy**로 MIFARE Classic 1K / FM11RF08S 원본 카드를 읽고, 대
 
 ## 준비물과 범위
 
-- Windows x64, Python 3.11 이상, Proxmark3 Easy, 데이터 USB 케이블.
-- 최초 준비에는 인터넷 연결과 약 250 MB의 여유 공간이 필요합니다. 클라이언트 다운로드는 약 42 MB입니다.
-- Python 모듈은 실행 시 준비하며, pm3/ProxSpace 별도 설치나 경로 편집은 필요하지 않습니다.
+- Windows 10/11 x64, Proxmark3 Easy, 데이터 USB 케이블. Python·pm3·ProxSpace 사전 설치는 필요 없습니다.
+- 최초 준비에는 인터넷 연결과 약 500 MB의 여유 공간이 필요합니다. 클라이언트 다운로드는 약 42 MB, 전용 Python은 약 32 MB이며 추가 모듈도 다운로드합니다.
+- 기존 Python, ProxSpace, pm3 PATH 및 예전 설정의 클라이언트·COM 경로를 기본적으로 사용하지 않습니다. Windows 업그레이드 전 설치 파일을 삭제할 필요가 없습니다. 전용 파일은 `.runtime` 안에 준비합니다.
 - 자동 클라이언트 설치는 Windows x64용입니다. Linux/macOS에서는 기존 Iceman 클라이언트를 지정하세요.
 - 대상은 MIFARE Classic 1K 호환 카드입니다. Gen1a 매직카드는 UID를 포함해 쓰며, 일반 카드는 UID를 바꿀 수 없습니다. 일반 카드의 인증 키·액세스 조건에 따라 쓰기가 실패할 수 있습니다. 다른 매직카드 세대 전체를 지원한다는 뜻은 아닙니다.
 - 현재 쓰기 검증은 데이터 블록을 비교합니다. 일반 카드의 제조사 블록과 읽을 수 없는 섹터 키는 비교 대상에서 제외합니다. 출입 시스템 등에서 실제 사용 가능한지까지 검증하는 것은 아닙니다.
@@ -51,9 +51,10 @@ FM11RF08S 복구는 이 빌드의 [내장 `hf mf sen`](https://github.com/RfidRe
 - 실행한 콘솔 창을 닫으면 로컬 서버가 종료됩니다.
 - 브라우저를 새로고침하면 실행 중인 작업과 카드 교체 대기 상태를 다시 표시합니다. 서버 재시작 후에는 저장된 덤프 목록에서 쓰기를 선택할 수 있습니다.
 
-기존 클라이언트나 COM 포트를 직접 지정하려면 `amsrfid.example.toml`을 `amsrfid.toml`로 복사해 설정합니다. 아래 값은 예시입니다.
+고급 사용자: 기존 클라이언트나 COM 포트를 의도적으로 사용하려면 `amsrfid.example.toml`을 `amsrfid.toml`로 복사해 설정합니다. 아래 값은 예시입니다.
 
 ```toml
+use_system_client = true
 pm3_path = 'C:\proxmark3\client\proxmark3.exe'
 port = 'COM7'
 ```
@@ -71,7 +72,7 @@ python -m amsrfid version
 
 ## 업데이트와 테스트
 
-`token.txt`에 GitHub 토큰이 있으면 실행 시 `claude/lucid-hamilton-2c2r4r`에서 업데이트합니다. 실행 중인 배치 파일이 변경된 경우 안내된 `run_v030.bat`을 한 번 실행하면 새 실행기로 바뀝니다. 사용자 설정, 토큰, `.runtime`, 저장 덤프는 업데이트에서 보존합니다.
+`token.txt`에 GitHub 토큰이 있으면 실행 시 `claude/lucid-hamilton-2c2r4r`에서 업데이트합니다. 실행 중인 배치 파일이 변경된 경우 안내된 `run_v031.bat`을 한 번 실행하면 새 실행기로 바뀝니다. 사용자 설정, 토큰, `.runtime`, 저장 덤프는 업데이트에서 보존합니다.
 
 ```text
 python -m pip install pytest -r requirements.txt
@@ -80,3 +81,5 @@ python tools/check_sources.py
 ```
 
 CI는 Windows·Linux에서 가상 클라이언트로 설치/연결/읽기/카드 교체/쓰기/검증 흐름을 테스트합니다. Windows에서는 실제 배포 클라이언트를 다운로드해 DLL 로딩과 SEN 도움말을 **오프라인**으로 확인합니다. 실제 USB 하드웨어 및 Windows 커널 안정성 검증은 별도입니다.
+
+전용 Python은 [Python 공식 Windows 배포](https://www.python.org/ftp/python/3.13.12/python-3.13.12-amd64.zip)를 사용합니다. SHA-256은 `9089c1f0d720f7c913cd4caf600e6761b0a4d5b90ccf34229fe418ff64a5da5f`이며, `_pth` 파일로 전역 Python 설정 및 사용자 모듈 경로에서 격리합니다. Windows CI는 PATH에서 Python을 제거한 상태로 실제 `run.bat version`을 실행해 최초 준비를 검증합니다.

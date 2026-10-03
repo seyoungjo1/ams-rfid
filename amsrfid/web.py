@@ -81,8 +81,12 @@ class App:
     def status(self) -> dict[str, Any]:
         info: dict[str, Any] = {"version": __version__, "outdir": str(self.cfg.out_path)}
         try:
-            pm3 = Pm3.locate(self.cfg.pm3_path or None, self.cfg.port or None, self.cfg.out_path)
-            info["pm3"] = pm3.client
+            from . import runtime
+            if runtime.supported_platform() and not self.cfg.use_system_client:
+                info["pm3"] = runtime.installed_client(self.cfg.root)
+            else:
+                pm3 = Pm3.locate(self.cfg.pm3_path or None, self.cfg.port or None, self.cfg.out_path)
+                info["pm3"] = pm3.client
         except Pm3Error as e:
             info["pm3"] = None
             info["pm3_error"] = str(e)
@@ -91,7 +95,7 @@ class App:
         info["device_checked"] = bool(dev)
         info["connected"] = dev.get("connected", False)
         info["pending_write"] = self.pending_write
-        info["port"] = self.cfg.port or dev.get("com")
+        info["port"] = dev.get("com") if runtime.supported_platform() and not self.cfg.use_system_client else self.cfg.port or dev.get("com")
         info["device_present"] = dev.get("present", False)
         info["needs_driver"] = dev.get("needs_driver", False)
         info["device_name"] = dev.get("name", "")

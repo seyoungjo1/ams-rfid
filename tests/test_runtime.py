@@ -62,3 +62,18 @@ def test_environment_uses_packaged_dlls_without_changing_parent(tmp_path, monkey
     assert str(tmp_path / "libs") in env["PATH"]
     assert env["HOME"] == "original-home"
     assert runtime.os.environ["PATH"] == "original"
+
+
+def test_windows_default_ignores_old_client_and_port(tmp_path, monkeypatch):
+    from amsrfid import setup, pm3, workflow
+    from amsrfid.config import Config
+    cfg = Config(root=tmp_path, pm3_path="old-windows10/pm3.exe", port="COM99")
+    monkeypatch.setattr(runtime, "supported_platform", lambda: True)
+    monkeypatch.setattr(runtime, "install", lambda *a: "new-private-client.exe")
+    def detect(p, cfg, echo):
+        assert p.port is None
+        assert p.client == "new-private-client.exe"
+        p.port = "COM7"
+    monkeypatch.setattr(workflow, "wait_for_device", detect)
+    monkeypatch.setattr(pm3.Pm3, "run", lambda *a, **k: pm3.Pm3Result(0, "os: current", ""))
+    assert setup.prepare_device(cfg, lambda *a: None).port == "COM7"

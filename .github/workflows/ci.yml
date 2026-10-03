@@ -40,6 +40,23 @@ jobs:
       - name: Pytest
         run: python -m pytest -q
 
-      - name: Real portable Windows client (offline only)
-        if: runner.os == 'Windows'
-        run: python tools/check_runtime.py
+
+  clean-windows:
+    name: Zero-setup Windows launcher and real PM3 client
+    runs-on: windows-latest
+    steps:
+      - uses: actions/checkout@v4
+      - name: Launch without global Python or ProxSpace
+        shell: powershell
+        run: |
+          $env:PATH = "$env:SystemRoot\System32;$env:SystemRoot"
+          $env:AMSRFID_NO_PAUSE = '1'
+          & cmd.exe /c 'run.bat version'
+          if ($LASTEXITCODE -ne 0) { throw 'Zero-setup launcher failed' }
+          & '.\.runtime\python-3.13.12\python.exe' -X utf8 -c "import sys,serial,py7zr,amsrfid.web; assert '.runtime' in sys.executable; print('private runtime imports OK')"
+          if ($LASTEXITCODE -ne 0) { throw 'Private imports failed' }
+      - name: Actual portable client offline smoke test
+        shell: powershell
+        run: |
+          & '.\.runtime\python-3.13.12\python.exe' -X utf8 tools/check_runtime.py
+          if ($LASTEXITCODE -ne 0) { throw 'Portable PM3 client test failed' }

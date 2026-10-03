@@ -30,7 +30,7 @@ def connected_config(tmp_path):
     else:
         client = script
         client.chmod(0o755)
-    return Config(pm3_path=str(client), port="COM_TEST", root=tmp_path,
+    return Config(use_system_client=True, pm3_path=str(client), port="COM_TEST", root=tmp_path,
                   outdir="new output", timeout=30, poll=0.01, wait=1)
 
 

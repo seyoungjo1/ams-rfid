@@ -173,7 +173,10 @@ def client_environment(client: str) -> dict[str, str]:
     env = os.environ.copy()
     libs = Path(client).resolve().parent / "libs"
     if libs.is_dir():
-        env["PATH"] = os.pathsep.join([str(libs), str(libs / "shell"), env.get("PATH", "")])
+        # Use packaged libraries and Windows system tools, not an old ProxSpace PATH.
+        windows = Path(env.get("SystemRoot", r"C:\Windows"))
+        tail = os.pathsep.join([str(windows / "System32"), str(windows)]) if os.name == "nt" else env.get("PATH", "")
+        env["PATH"] = os.pathsep.join([str(libs), str(libs / "shell"), tail])
         env["QT_PLUGIN_PATH"] = str(libs)
         env["QT_QPA_PLATFORM_PLUGIN_PATH"] = str(libs)
         env["MSYSTEM"] = "MINGW64"
