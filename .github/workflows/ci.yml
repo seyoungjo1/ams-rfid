@@ -1,0 +1,38 @@
+name: CI
+
+on:
+  push:
+    branches: ["**"]
+  pull_request:
+
+jobs:
+  test:
+    name: test (${{ matrix.os }} · py${{ matrix.python }})
+    runs-on: ${{ matrix.os }}
+    strategy:
+      fail-fast: false
+      matrix:
+        os: [ubuntu-latest, windows-latest]
+        python: ["3.11"]
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: ${{ matrix.python }}
+
+      - name: Install deps
+        run: python -m pip install --quiet pytest pyserial
+
+      # 널 바이트/인코딩/컴파일 가드 — 사용자 PC 를 죽였던 'source code string cannot
+      # contain null bytes' 류의 손상을 커밋 단계에서 잡는다.
+      - name: Source integrity (no null bytes, valid UTF-8, compiles)
+        run: python tools/check_sources.py
+
+      # 전 모듈 임포트 — Windows 에서도 import 체인이 깨지지 않는지(대상 OS 검증).
+      - name: Import all modules
+        run: python -c "import amsrfid.cli, amsrfid.web, amsrfid.workflow, amsrfid.setup, amsrfid.pm3, amsrfid.dump, amsrfid.update, amsrfid.menu, amsrfid.config; print('imports ok')"
+
+      # 유닛 + (ubuntu 에선) 가상 스텁 기반 end-to-end 테스트.
+      - name: Pytest
+        run: python -m pytest -q
