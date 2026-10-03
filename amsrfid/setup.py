@@ -14,8 +14,8 @@ from .config import Config
 Echo = Callable[[str], Any]
 
 
-def ensure_driver(echo: Echo = print) -> bool:
-    """드라이버는 **설치하지 않는다** — 상태만 알려 준다(자동 설치 제거, 시스템 안정성)."""
+def ensure_driver(echo: Echo = print) -> dict:
+    """드라이버는 **설치하지 않는다** — 상태만 알려 주고, 장치 정보를 돌려준다(한 번만 열거)."""
     dev = P.detect_device()
     if dev.get("com"):
         echo("· 장치 OK — 포트 %s" % dev.get("com"))
@@ -24,7 +24,7 @@ def ensure_driver(echo: Echo = print) -> bool:
         echo("  데이터선 있는 케이블 + 본체 USB 포트로 바꿔 꽂아 보세요.(드라이버 자동설치는 안 합니다)")
     else:
         echo("· 아직 장치가 안 보입니다 — USB 에 꽂아 주세요(데이터선 케이블).")
-    return True
+    return dev
 
 
 def ensure_client(cfg: Config, echo: Echo = print, deep: bool = False) -> str | None:
@@ -76,9 +76,8 @@ def bootstrap(cfg: Config, echo: Echo = print, do_flash: bool | None = None) -> 
     do_flash 는 호환용으로 받지만 무시한다(자동 플래싱 제거).
     """
     echo("=== 상태 확인 ===")
-    ensure_driver(echo)
+    dev = ensure_driver(echo)                 # 장치 열거는 여기서 '한 번만'
     client = ensure_client(cfg, echo, deep=True)
-    dev = P.detect_device()
     result = {
         "client": client,
         "flashed": False,

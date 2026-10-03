@@ -106,68 +106,74 @@ _TARGET_NAMES = {"proxmark3.exe", "pm3.bat", "pm3", "proxmark3"}
 
 
 def _scan_roots() -> list[Path]:
+    """클라이언트를 찾아볼 '흔한 폴더만'. 드라이브 루트(C:\\) 전체는 절대 훑지 않는다.
+
+    과거 C:\\ 전체 os.walk 가 시스템을 멈추게/죽게 한 사례가 있어, 사용자가 보통 압축을 푸는
+    몇몇 폴더만 얕게 본다.
+    """
     roots: list[Path] = []
     if os.name == "nt":
-        # 사용자 폴더 먼저(보통 여기에 풀어 둠), 그다음 고정 드라이브 루트.
-        for env in ("USERPROFILE", "LOCALAPPDATA", "ProgramFiles", "ProgramFiles(x86)"):
-            v = os.environ.get(env)
-            if v:
-                roots.append(Path(v))
-        import string
-        for d in string.ascii_uppercase:
-            p = Path("%s:\\" % d)
-            try:
-                if p.exists():
-                    roots.append(p)
-            except OSError:
-                pass
+        up = os.environ.get("USERPROFILE") or ""
+        bases = []
+        if up:
+            bases += [up + r"\Downloads", up + r"\Desktop", up + r"\Documents", up]
+        bases += [r"C:\ProxSpace", r"C:\proxmark3", r"C:\tools",
+                  os.environ.get("ProgramFiles", ""), os.environ.get("ProgramFiles(x86)", "")]
+        for b in bases:
+            if b:
+                roots.append(Path(b))
     else:
         for v in (os.environ.get("HOME"), "/opt", "/usr/local"):
             if v:
                 roots.append(Path(v))
-    # 중복 제거(순서 유지)
+    # 이 도구 폴더의 이웃(형제 폴더)도 — 보통 proxmark 를 옆에 둔다.
+    try:
+        roots.append(_root().parent)
+    except Exception:
+        pass
     seen, out = set(), []
     for r in roots:
         k = str(r).lower()
         if k not in seen:
-            seen.add(k)
-            out.append(r)
+            try:
+                if r.exists():
+                    seen.add(k)
+                    out.append(r)
+            except OSError:
+                pass
     return out
 
 
-def deep_find_client(max_dirs: int = 60000, max_depth: int = 7) -> str | None:
-    """흔한 위치에서 못 찾았을 때, 드라이브/사용자 폴더를 제한적으로 뒤져 pm3 실행 파일을 찾는다.
+def deep_find_client(max_dirs: int = 4000, max_depth: int = 5) -> str | None:
+    """흔한 폴더만 **얕고 짧게** 뒤져 pm3 실행 파일을 찾는다(드라이브 전체 스캔 아님).
 
-    사용자가 '어딘가 풀어 둔' Proxmark3 를 자동으로 찾아내기 위한 마지막 수단.
-    깊이·개수를 제한하고 시스템/거대 폴더는 건너뛰어 과하지 않게 돈다. 찾으면 그 경로를
-    pm3_path.txt 에 적어 다음부터는 즉시 찾게 한다.
+    개수·깊이를 빡빡하게 제한하고 시스템/거대 폴더는 건너뛴다 — 멈추거나 죽지 않게.
+    찾으면 pm3_path.txt 에 적어 다음부턴 즉시 찾게 한다.
     """
-    seen_dirs = 0
+def deep_find_client(max_dirs: int = 4000, max_depth: int = 5) -> str | None:
+    """흔한 폴더에서 pm3 실행 파일을 **얕은 glob 으로만** 찾는다(재귀 os.walk 안 함).
+
+    과거 드라이브 전체 os.walk 가 시스템을 멈추게/죽게 한 사례가 있어, 재귀 탐색을 전부
+    없앴다. 몇몇 폴더의 1~3단계 아래까지만 정해진 패턴으로 '파일 있나' 확인한다.
+    (max_dirs·max_depth 는 호환용 인자일 뿐, 실제로는 쓰지 않는다.)
+    """
+    names = ("proxmark3.exe", "pm3.bat", "proxmark3", "pm3")
     hit: str | None = None
     for root in _scan_roots():
-        base_depth = len(root.parts)
-        try:
-            walker = os.walk(root)
-        except OSError:
-            continue
-        for cur, dirs, files in walker:
-            seen_dirs += 1
-            if seen_dirs > max_dirs:
-                break
-            depth = len(Path(cur).parts) - base_depth
-            if depth >= max_depth:
-                dirs[:] = []
-            # 시스템/거대 폴더는 안 들어간다
-            dirs[:] = [d for d in dirs if d.lower() not in _SKIP_DIRS and not d.startswith("$")]
-            low = {f.lower(): f for f in files}
-            for target in ("proxmark3.exe", "pm3.bat", "pm3", "proxmark3"):
-                if target in low:
-                    cand = str(Path(cur) / low[target])
-                    if Path(cand).is_file():
-                        hit = cand
-                        break
+        for depth in (0, 1, 2):                     # 루트·1단계·2단계까지만(얕게)
             if hit:
                 break
+            for name in names:
+                pat = os.path.join(str(root), *(["*"] * depth), name)
+                try:
+                    for cand in glob.glob(pat):
+                        if Path(cand).is_file():
+                            hit = cand
+                            break
+                except OSError:
+                    continue
+                if hit:
+                    break
         if hit:
             break
     if hit:

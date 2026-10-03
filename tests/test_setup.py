@@ -40,7 +40,7 @@ def test_ensure_driver_never_autoinstalls(tmp_path, monkeypatch):
         return (True, "설치됨")
 
     monkeypatch.setattr(P, "install_driver", boom)
-    assert setup.ensure_driver(echo=lambda *a: None) is True
+    assert isinstance(setup.ensure_driver(echo=lambda *a: None), dict)
     assert "yes" not in called          # 절대 자동 설치하지 않음
 
 
