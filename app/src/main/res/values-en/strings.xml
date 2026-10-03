@@ -74,4 +74,16 @@
     <string name="db_check_failed">Update check failed: %1$s</string>
     <string name="db_update_failed">Update failed: %1$s</string>
     <string name="ok">OK</string>
+
+    <!-- Write from file -->
+    <string name="tab_file">File</string>
+    <string name="file_intro">Pick a dump file you already have (.bin / .json / .nfc) and write it as-is to a blank CUID/FUID card. Supports 1024-byte dumps from MIFARE Classic 1K compatible chips such as FM11RF08S.</string>
+    <string name="file_pick">Choose dump file</string>
+    <string name="file_hint">Pick a 1024-byte (1K) dump from Proxmark/Flipper etc. Use only on tags/cards you own.</string>
+    <string name="file_parse_failed">Could not read file: %1$s</string>
+    <string name="file_read_failed">Could not open the file.</string>
+    <string name="file_bambu_ok">Verified as a Bambu dump (UID-derived keys match)</string>
+    <string name="file_bambu_unknown">Not a Bambu dump, but it will be written as a 1K dump</string>
+    <string name="file_burn">Write this dump to a card</string>
+    <string name="file_burn_warning">The dump UID must match the card. Use a blank CUID (gen2) or a fresh FUID card.</string>
 </resources>

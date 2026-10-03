@@ -39,6 +39,17 @@ APK를 폰에 복사해 설치하세요(출처를 알 수 없는 앱 설치 허�
 - 시크릿이 없으면 워크플로는 임시 키로 빌드만 하고 릴리스는 게시하지 않습니다.
 - 비밀번호를 잃어버리면 같은 키로 다시 서명할 수 없어 앱을 지우고 새로 설치해야 합니다. 안전한 곳에 보관하세요.
 
+## 파일에서 굽기 (fm11rf08s 등)
+
+라이브러리에 없는 덤프도 직접 구울 수 있습니다. **파일 굽기** 탭에서 본인이 가진 덤프 파일을 고르면 됩니다.
+
+- 지원 형식: 원시 `.bin`(1024바이트 = 64블록), Proxmark `.json`, Flipper `.nfc`.
+  FM11RF08S(= MIFARE Classic 1K 호환) 칩에서 뜬 덤프가 여기에 해당합니다. Proxmark `fm11rf08s`
+  복구 결과처럼 1152바이트(72블록)인 파일은 앞 1024바이트만 씁니다.
+- 파일을 고르면 UID와 (Bambu 규격이면) 필라멘트 정보를 보여주고, 빈 CUID/FUID 카드에 그대로 씁니다.
+- 쓰기 엔진은 라이브러리 굽기와 동일합니다(빈 카드는 FF 키로, 반쯤 쓰인 카드는 덤프의 트레일러 키로 인증).
+- 본인이 보유한 태그/카드에 대해서만, 상호운용·백업 용도로 사용하세요.
+
 ## 사용법
 
 1. **라이브러리** 탭에서 재질·색상을 검색·선택합니다.
@@ -66,10 +77,10 @@ APK를 폰에 복사해 설치하세요(출처를 알 수 없는 앱 설치 허�
 
 ```
 app/src/main/java/com/ams/rfid/
-  core/    UID 키 유도·덤프 파싱·필라멘트 정보·클론 로직 (순수 Kotlin, 단위 테스트 대상)
+  core/    UID 키 유도·덤프 파싱(라이브러리/파일)·필라멘트 정보·클론·DB비교 (순수 Kotlin, 테스트 대상)
   nfc/     android.nfc.MifareClassic → MifareCard 어댑터
   data/    DB 로더·업데이트(내장/내려받은 DB 선택, manifest 확인, 다운로드)
-  ui/      Compose UI, NFC 리더 모드 액티비티
+  ui/      Compose UI(라이브러리/파일 굽기/읽기/도움말), NFC 리더 모드
 app/src/main/assets/library/index.json   빌드된 필라멘트 라이브러리
 scripts/build_tag_library.py             라이브러리 덤프 → index.json 변환기
 .github/workflows/build.yml              APK 빌드/릴리스 워크플로

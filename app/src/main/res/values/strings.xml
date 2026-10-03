@@ -81,4 +81,16 @@
     <string name="db_check_failed">업데이트 확인 실패: %1$s</string>
     <string name="db_update_failed">업데이트 실패: %1$s</string>
     <string name="ok">확인</string>
+
+    <!-- 파일에서 굽기 -->
+    <string name="tab_file">파일 굽기</string>
+    <string name="file_intro">직접 가진 덤프 파일(.bin / .json / .nfc)을 골라 빈 CUID·FUID 카드에 그대로 굽습니다. FM11RF08S 처럼 MIFARE Classic 1K 호환 칩에서 뜬 1024바이트 덤프를 지원합니다.</string>
+    <string name="file_pick">덤프 파일 선택</string>
+    <string name="file_hint">Proxmark/Flipper 등에서 뜬 1024바이트(1K) 덤프를 고르세요. 본인이 보유한 태그/카드에 대해서만 사용하세요.</string>
+    <string name="file_parse_failed">파일을 읽을 수 없습니다: %1$s</string>
+    <string name="file_read_failed">파일을 열 수 없습니다.</string>
+    <string name="file_bambu_ok">Bambu 규격 덤프로 확인됨 (UID 유도 키 일치)</string>
+    <string name="file_bambu_unknown">Bambu 규격은 아니지만 1K 덤프로 그대로 굽습니다</string>
+    <string name="file_burn">이 덤프를 카드에 굽기</string>
+    <string name="file_burn_warning">덤프의 UID 가 카드와 맞아야 합니다. 빈 CUID(2세대) 또는 새 FUID 카드를 쓰세요.</string>
 </resources>

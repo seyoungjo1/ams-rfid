@@ -2,6 +2,8 @@ package com.ams.rfid.ui
 
 import androidx.compose.foundation.background
 import androidx.compose.foundation.border
+import androidx.activity.compose.rememberLauncherForActivityResult
+import androidx.activity.result.contract.ActivityResultContracts
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.foundation.layout.Arrangement
@@ -24,6 +26,7 @@ import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.Info
 import androidx.compose.material.icons.filled.List
 import androidx.compose.material.icons.filled.Search
+import androidx.compose.material.icons.filled.UploadFile
 import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.Button
 import androidx.compose.material3.Card
@@ -46,6 +49,7 @@ import androidx.compose.runtime.getValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextOverflow
@@ -82,6 +86,12 @@ fun AppRoot(vm: MainViewModel) {
                     label = { Text(stringResource(R.string.tab_library)) },
                 )
                 NavigationBarItem(
+                    selected = ui.tab == Tab.FILE,
+                    onClick = { vm.setTab(Tab.FILE) },
+                    icon = { Icon(Icons.Filled.UploadFile, null) },
+                    label = { Text(stringResource(R.string.tab_file)) },
+                )
+                NavigationBarItem(
                     selected = ui.tab == Tab.READ,
                     onClick = { vm.setTab(Tab.READ) },
                     icon = { Icon(Icons.Filled.Search, null) },
@@ -99,6 +109,7 @@ fun AppRoot(vm: MainViewModel) {
         Box(Modifier.padding(pad).fillMaxSize()) {
             when (ui.tab) {
                 Tab.LIBRARY -> LibraryScreen(ui, vm)
+                Tab.FILE -> FileScreen(ui, vm)
                 Tab.READ -> ReadScreen(vm)
                 Tab.HELP -> HelpScreen(ui, vm)
             }
@@ -227,6 +238,113 @@ private fun DetailSheet(entry: FilamentEntry, vm: MainViewModel) {
             Spacer(Modifier.height(8.dp))
         }
     }
+}
+
+@Composable
+private fun FileScreen(ui: UiState, vm: MainViewModel) {
+    val context = LocalContext.current
+    val picker = rememberLauncherForActivityResult(
+        ActivityResultContracts.OpenDocument(),
+    ) { uri ->
+        if (uri == null) return@rememberLauncherForActivityResult
+        val name = queryFileName(context, uri) ?: (uri.lastPathSegment ?: "dump")
+        val bytes = runCatching {
+            context.contentResolver.openInputStream(uri)?.use { it.readBytes() }
+        }.getOrNull()
+        if (bytes == null) {
+            vm.reportFileReadError()
+        } else {
+            vm.loadDumpFile(name, bytes)
+        }
+    }
+    // .bin 에 표준 MIME 이 없어 모든 형식을 허용하고 내용으로 판별한다.
+    val mimeTypes = arrayOf("*/*")
+
+    Column(
+        Modifier.fillMaxSize().verticalScroll(rememberScrollState()).padding(24.dp),
+    ) {
+        Text(stringResource(R.string.file_intro), style = MaterialTheme.typography.bodyLarge)
+        Spacer(Modifier.height(16.dp))
+        Button(
+            onClick = { picker.launch(mimeTypes) },
+            modifier = Modifier.fillMaxWidth(),
+        ) {
+            Icon(Icons.Filled.UploadFile, null)
+            Spacer(Modifier.width(8.dp))
+            Text(stringResource(R.string.file_pick))
+        }
+        Spacer(Modifier.height(16.dp))
+
+        when (val f = ui.file) {
+            FileState.Empty -> Text(
+                stringResource(R.string.file_hint),
+                style = MaterialTheme.typography.bodySmall,
+                color = MaterialTheme.colorScheme.outline,
+            )
+            FileState.Loading -> CircularProgressIndicator()
+            is FileState.Error -> Text(
+                stringResource(R.string.file_parse_failed, f.message),
+                color = MaterialTheme.colorScheme.error,
+            )
+            is FileState.Ready -> LoadedDumpCard(f.loaded, vm)
+        }
+    }
+}
+
+@Composable
+private fun LoadedDumpCard(loaded: LoadedDump, vm: MainViewModel) {
+    Card(Modifier.fillMaxWidth()) {
+        Column(Modifier.padding(16.dp)) {
+            Row(verticalAlignment = Alignment.CenterVertically) {
+                if (loaded.info != null) {
+                    Box(
+                        Modifier.size(40.dp)
+                            .background(parseColor(loaded.info.colorHex), CircleShape)
+                            .border(1.dp, MaterialTheme.colorScheme.outlineVariant, CircleShape),
+                    )
+                    Spacer(Modifier.width(12.dp))
+                }
+                Column(Modifier.weight(1f)) {
+                    Text(loaded.fileName, fontWeight = FontWeight.SemiBold, maxLines = 1, overflow = TextOverflow.Ellipsis)
+                    Text(loaded.format, style = MaterialTheme.typography.labelSmall, color = MaterialTheme.colorScheme.outline)
+                }
+            }
+            Spacer(Modifier.height(12.dp))
+            InfoLine(stringResource(R.string.detail_uid, loaded.dump.uidHex))
+            loaded.info?.let { i ->
+                if (i.filamentType.isNotBlank()) {
+                    InfoLine(stringResource(R.string.detail_type, i.detailedType.ifEmpty { i.filamentType }))
+                }
+            }
+            // 이 덤프가 Bambu 규격(UID 유도 키·BCC)에 맞는지 알려준다. 안 맞아도 쓰기는 가능.
+            Spacer(Modifier.height(4.dp))
+            Text(
+                stringResource(if (loaded.bambuValid) R.string.file_bambu_ok else R.string.file_bambu_unknown),
+                style = MaterialTheme.typography.bodySmall,
+                color = if (loaded.bambuValid) MaterialTheme.colorScheme.primary else MaterialTheme.colorScheme.outline,
+            )
+            Spacer(Modifier.height(16.dp))
+            Button(onClick = { vm.armWriteLoaded() }, modifier = Modifier.fillMaxWidth()) {
+                Text(stringResource(R.string.file_burn))
+            }
+            Spacer(Modifier.height(8.dp))
+            Text(
+                stringResource(R.string.file_burn_warning),
+                style = MaterialTheme.typography.bodySmall,
+                color = MaterialTheme.colorScheme.outline,
+            )
+        }
+    }
+}
+
+/** content:// URI 의 표시 이름을 얻는다. */
+private fun queryFileName(context: android.content.Context, uri: android.net.Uri): String? {
+    return runCatching {
+        context.contentResolver.query(uri, null, null, null, null)?.use { c ->
+            val idx = c.getColumnIndex(android.provider.OpenableColumns.DISPLAY_NAME)
+            if (idx >= 0 && c.moveToFirst()) c.getString(idx) else null
+        }
+    }.getOrNull()
 }
 
 @Composable

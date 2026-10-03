@@ -7,6 +7,7 @@ import com.ams.rfid.R
 import com.ams.rfid.core.BambuKeys
 import com.ams.rfid.core.CloneResult
 import com.ams.rfid.core.CuidCheck
+import com.ams.rfid.core.DumpFile
 import com.ams.rfid.core.DumpValidator
 import com.ams.rfid.core.FilamentInfo
 import com.ams.rfid.core.LibraryUpdate
@@ -23,7 +24,24 @@ import kotlinx.coroutines.flow.asStateFlow
 import kotlinx.coroutines.flow.update
 import kotlin.concurrent.thread
 
-enum class Tab { LIBRARY, READ, HELP }
+enum class Tab { LIBRARY, FILE, READ, HELP }
+
+/** 파일에서 불러온 덤프와 그 요약. */
+data class LoadedDump(
+    val dump: TagDump,
+    val format: String,
+    val fileName: String,
+    val info: FilamentInfo?,
+    val bambuValid: Boolean,
+)
+
+/** 파일 불러오기 상태. */
+sealed interface FileState {
+    data object Empty : FileState
+    data object Loading : FileState
+    data class Ready(val loaded: LoadedDump) : FileState
+    data class Error(val message: String) : FileState
+}
 
 sealed interface LibraryState {
     data object Loading : LibraryState
@@ -34,7 +52,8 @@ sealed interface LibraryState {
 /** 태그를 대면 실행할 대기 중인 작업. */
 sealed interface Armed {
     data object None : Armed
-    data class Write(val entry: FilamentEntry, val dump: TagDump) : Armed
+    /** 덤프를 카드에 쓴다. 라이브러리 항목이든 파일에서 불러온 덤프든 동일하게 처리한다. */
+    data class Write(val dump: TagDump) : Armed
     data object Read : Armed
     data object CuidCheck : Armed
 }
@@ -64,6 +83,7 @@ data class UiState(
     val query: String = "",
     val results: List<FilamentEntry> = emptyList(),
     val selected: FilamentEntry? = null,
+    val file: FileState = FileState.Empty,
     val armed: Armed = Armed.None,
     val status: OpStatus = OpStatus.Idle,
     val update: UpdateState = UpdateState.Idle,
@@ -186,7 +206,35 @@ class MainViewModel(app: Application) : AndroidViewModel(app) {
             set { it.copy(status = OpStatus.Failure(e.message ?: "덤프 오류")) }
             return
         }
-        set { it.copy(armed = Armed.Write(entry, dump), status = OpStatus.Idle) }
+        set { it.copy(armed = Armed.Write(dump), status = OpStatus.Idle) }
+    }
+
+    // ---- 파일에서 굽기 ----
+
+    /** 사용자가 고른 덤프 파일(bytes)을 파싱해 미리보기를 만든다. */
+    fun loadDumpFile(fileName: String, bytes: ByteArray) {
+        set { it.copy(file = FileState.Loading) }
+        thread(name = "dump-parse") {
+            val next: FileState = when (val r = DumpFile.parse(bytes)) {
+                is DumpFile.Result.Ok -> {
+                    val valid = DumpValidator.validate(r.dump).ok
+                    val info = runCatching { FilamentInfo.parse(r.dump) }.getOrNull()
+                    FileState.Ready(LoadedDump(r.dump, r.format, fileName, info, valid))
+                }
+                is DumpFile.Result.Error -> FileState.Error(r.message)
+            }
+            set { it.copy(file = next) }
+        }
+    }
+
+    fun clearDumpFile() = set { it.copy(file = FileState.Empty) }
+
+    fun reportFileReadError() = set { it.copy(file = FileState.Error(str(R.string.file_read_failed))) }
+
+    /** 파일에서 불러온 덤프를 카드에 굽는다. */
+    fun armWriteLoaded() {
+        val loaded = (_ui.value.file as? FileState.Ready)?.loaded ?: return
+        set { it.copy(armed = Armed.Write(loaded.dump), status = OpStatus.Idle) }
     }
 
     fun armRead() = set { it.copy(armed = Armed.Read, status = OpStatus.Idle) }
