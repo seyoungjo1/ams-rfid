@@ -215,6 +215,8 @@ def apply(blobs: dict[str, bytes], version: str, root: Path | None = None) -> di
     running = running_bat()
     put_off: set[str] = set()
     for rel, data in sorted(blobs.items()):
+        if rel == "VERSION":
+            continue  # Commit the version only after every file and import check succeeds.
         dest = root / rel
         try:
             old = dest.read_bytes() if dest.is_file() else None
@@ -237,6 +239,8 @@ def apply(blobs: dict[str, bytes], version: str, root: Path | None = None) -> di
         except OSError as e:
             result["failed"].append("%s (%s)" % (rel, e))
     for rel, data in sorted(blobs.items()):
+        if rel == "VERSION":
+            continue  # Commit the version only after every file and import check succeeds.
         dest = root / rel
         if rel in put_off:
             continue

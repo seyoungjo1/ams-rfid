@@ -22,26 +22,19 @@ def test_port_is_pm3_by_manufacturer():
     assert not pm3._port_is_pm3({"vid": 0x1234, "pid": 0x5678, "desc": "random", "manufacturer": "acme"})
 
 
-def test_run_retries_once_on_disconnect(monkeypatch):
+def test_run_does_not_replay_on_disconnect(monkeypatch):
     p = pm3.Pm3(client="proxmark3", port="COM7")
-    outs = [
-        pm3.Pm3Result(0, "offline, cannot communicate with the proxmark", ""),
-        pm3.Pm3Result(0, "os: ok\nUID: 11223344\n", ""),
-    ]
-    calls = {"n": 0}
-
+    calls = []
     def fake_sub(args, timeout):
-        i = calls["n"]
-        calls["n"] += 1
-        return outs[min(i, len(outs) - 1)]
-
+        calls.append(args)
+        return pm3.Pm3Result(1, "offline, cannot communicate with the proxmark", "")
     monkeypatch.setattr(p, "_run_subprocess", fake_sub)
-    # replug 로 포트가 바뀐 상황: 재탐지하면 새 포트가 나온다
     monkeypatch.setattr(pm3, "detect_port", lambda: "COM8")
-    res = p.run("hw version")
-    assert calls["n"] == 2            # 끊김 신호 → 딱 한 번 재시도
-    assert "os: ok" in res.text
-    assert p.port == "COM8"           # 포트가 새로 갱신됨
+    import pytest
+    with pytest.raises(pm3.Pm3Error, match="offline"):
+        p.run("hf mf cload -f backup.bin")
+    assert len(calls) == 1
+    assert p.port == "COM7"
 
 
 def test_run_no_retry_when_fine(monkeypatch):
@@ -55,3 +48,42 @@ def test_run_no_retry_when_fine(monkeypatch):
     monkeypatch.setattr(p, "_run_subprocess", fake_sub)
     p.run("hw version")
     assert calls["n"] == 1            # 정상 출력이면 재시도 없음
+
+
+def test_no_port_does_not_launch_wrapper(monkeypatch):
+    import pytest
+    p = pm3.Pm3(client="pm3")
+    monkeypatch.setattr(pm3, "detect_port", lambda: None)
+    monkeypatch.setattr(p, "_run_subprocess", lambda *a: pytest.fail("wrapper launched"))
+    with pytest.raises(pm3.DeviceNotFound):
+        p.run("hw version")
+
+
+def test_explicit_path_skips_search(tmp_path, monkeypatch):
+    client = tmp_path / "proxmark3.exe"
+    client.touch()
+    def forbidden(*args, **kwargs):
+        raise AssertionError("installation search with explicit path")
+    monkeypatch.setattr(pm3.shutil, "which", forbidden)
+    monkeypatch.setattr(pm3.glob, "glob", forbidden)
+    assert pm3.find_client(str(client)) == str(client)
+
+
+def test_card_wait_propagates_connection_errors(monkeypatch):
+    import pytest
+    p = pm3.Pm3(client="proxmark3", port="COM7")
+    monkeypatch.setattr(p, "_run_subprocess", lambda *a: pm3.Pm3Result(1, "port unavailable", ""))
+    with pytest.raises(pm3.Pm3Error, match="port unavailable"):
+        p.card_present()
+
+
+def test_successful_serial_banner_is_not_a_disconnect(monkeypatch):
+    p = pm3.Pm3(client="proxmark3", port="COM7")
+    monkeypatch.setattr(p, "_run_subprocess", lambda *a: pm3.Pm3Result(0, "Using serial port COM7\nUID: DEADBEEF\nATQA: 00 04", ""))
+    assert p.card_present()
+
+
+def test_identify_uses_one_command_argument():
+    args = pm3.Pm3(client="proxmark3", port="COM7")._build_args(["hf 14a info", "hf mf info"])
+    assert args.count("-c") == 1
+    assert args[-1] == "hf 14a info; hf mf info"

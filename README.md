@@ -9,7 +9,7 @@ automation)** 와 똑같이 맞췄습니다:
 
 - 파일 하나짜리 패키지(`amsrfid/`) + `VERSION` + `run.bat`
 - `token.txt` 한 줄만 두면 배포 브랜치에서 **스스로 최신본을 받아 교체**(`amsrfid/update.py`)
-- `run.bat` 을 누르면 **꽂고 → 찾고 → 키 복구 → `.bin` 저장**까지 저절로 진행
+- `run.bat` 으로 웹 UI를 열고 읽기 버튼으로 **장치 확인 → 키 복구 → `.bin` 저장** 진행
 
 ---
 
@@ -31,48 +31,43 @@ automation)** 와 똑같이 맞췄습니다:
 
 이 도구는 추가 파이썬 패키지가 거의 필요 없습니다(표준 라이브러리만 사용).
 
-## 처음 한 번 — 전체 설정 (딸깍)
+## 0.2.7 변경 사항
 
-Proxmark3 를 꽂고 웹 UI 의 **「⚙️ 드라이버·클라이언트·펌웨어 한 번에 설정」**(또는
-`python -m amsrfid setup`) 한 번이면, **공식 Proxmark3 도구를 엮어** 필요한 것만 알아서 합니다:
+- 첫 실행에서 출력 폴더를 만들고 클라이언트를 실행합니다.
+- 카드 식별 명령 두 개를 Iceman의 단일 `-c` 인자로 전달합니다.
+- 연결 오류를 카드 없음으로 숨기지 않고, 출력과 종료 코드를 `out/last-pm3.log`에 저장합니다.
+- 연결 확인 버튼/`connect` 명령으로 카드 없이 장치 버전을 한 번 확인할 수 있습니다.
+- 화면 폴링의 장치 조회, 재귀 설치 경로 탐색, 실패 명령 자동 재실행을 제거했습니다.
+- 잘못된 설정 파일은 오류를 표시하고, 업데이트 실패 시 기존 버전을 유지합니다.
 
-1. **드라이버** — 장치는 보이는데 COM 포트가 없으면 공식 `drivers/proxmark3.inf` 를
-   `pnputil` 로 설치(관리자 UAC). 이미 되어 있으면 건너뜀.
-2. **클라이언트** — `proxmark3.exe`/`pm3` 를 흔한 위치에서 찾고, 없으면 **드라이브를 뒤져**
-   이미 설치된 것을 찾아냅니다(찾으면 `pm3_path.txt` 에 적어 다음부턴 즉시). 정말 없으면
-   설치 안내.
-3. **펌웨어** — FM11RF08S 백도어를 지원 안 하는 펌웨어면 공식 `--flash` 로 fullimage 를
-   올립니다(이미 지원하면 건너뜀). 부트로더(bootrom)까지 바꿔야 하면 버튼 누른 채 꽂는
-   물리 단계가 한 번 필요합니다.
+## Windows / Proxmark3 Easy 실행
 
-그다음 **「원터치 읽기」** 를 누르면 카드 읽기 → 백도어 키복구 → `.bin` 저장까지 갑니다.
-(`run.bat` 은 켤 때 드라이버·클라이언트 설정을 자동으로 하고, 펌웨어 플래싱은 되돌릴 수
-없으니 UI 의 '전체 설정' 버튼으로 눌러 직접 확인하며 진행하도록 두었습니다.)
+1. `amsrfid.example.toml` 을 `amsrfid.toml` 로 복사합니다.
+2. 설치된 Iceman 클라이언트의 실제 경로와 장치관리자에 표시된 COM 포트를 적습니다.
+   아래 경로와 COM7은 예시이므로 자신의 설치 위치·포트로 바꾸세요.
 
-## pm3 인식 / 드라이버 (Windows)
+```toml
+pm3_path = 'C:\ProxSpace\pm3\client\proxmark3.exe'
+port = 'COM7'
+```
 
-이 도구는 **공식 Proxmark3 방식 그대로** 꽂힌 장치를 자동으로 찾습니다:
+3. ProxSpace 터미널 등 다른 프로그램에서 Proxmark3를 사용 중이면 종료합니다.
+4. `run.bat` 을 실행합니다. 화면의 **연결 확인**을 눌러 장치 버전 응답을 확인한 뒤
+   **원터치 읽기**를 실행합니다. 지정된 COM 포트는 자동 탐지로 바꾸지 않습니다.
 
-- 꽂힌 COM 포트를 **pyserial** 로 자동 탐지합니다 — USB VID:PID `9AC4:4B8F`(정품)·`2D2D:504D`
-  (구형)·**`502D:502D`(Proxmark3 Easy)** 또는 설명에 `proxmark`/`iceman`. (Proxmark3GUI·ProxSpace
-  등 기존 도구가 쓰는 검증된 방식 그대로. pyserial 이 없으면 PnP 스캔으로 대체)
-- 리눅스/맥도 같은 pyserial, 없으면 `/dev/pm3-*` → `/dev/ttyACM*`.
+화면 상태 조회는 USB/PnP 장치를 열거하지 않습니다. **상태 확인**은 포트만 열거하며,
+**진단** 버튼 또는 `python -m amsrfid diag` 는 Windows PnP 정보를 추가 조회합니다.
+클라이언트를 못 찾으면 `pm3_path.txt` 에 실제 실행 파일의 전체 경로를 한 줄로 적어도 됩니다.
+자동 경로 탐색은 알려진 설치 위치만 확인하고, 상태 확인에서 추가 탐색은 깊이를 제한합니다.
 
-**드라이버는 Windows 10/11 이면 대개 설치가 필요 없습니다.** Proxmark3 는 USB CDC 장치라
-Windows 가 내장 `usbser` 로 **꽂으면 자동 인식**해 COM 포트를 만듭니다(Proxmark3GUI·ProxSpace·
-공식 모두 별도 드라이버·Zadig 안 씀). **그래도 안 잡히면 대부분 이 순서로 해결됩니다:**
+드라이버 설치나 펌웨어 플래싱은 시작 시 및 상태 확인에서 실행하지 않습니다.
+드라이버 버튼은 안내만 표시합니다. 펌웨어 변경은 별도의 `flash` 명령입니다.
+Windows 설치 및 클라이언트 사용법은 [Iceman 공식 안내](https://github.com/RfidResearchGroup/proxmark3/blob/master/doc/md/Installation_Instructions/Windows-Installation-Instructions.md)를 참고하세요.
+Easy 모델의 펌웨어는 장치에 맞는 빌드가 필요하므로, 연결 문제만으로 다른 모델 이미지를 올리지 마세요.
 
-1. **데이터 전송용 USB 케이블**인지 확인 — 충전 전용 케이블은 인식 안 됩니다(가장 흔한 원인).
-2. 다른 USB 포트에 꽂기(USB 허브 말고 본체 직결).
-3. **Windows 7** 이거나 그래도 안 되면: 웹 UI **「드라이버 설치」** 또는 `python -m amsrfid driver`
-   로 공식 `drivers/proxmark3.inf` 를 `pnputil` 로 설치(관리자 UAC) → `usbser` 에 연결.
-
-**진단**: 안 잡히면 웹 UI **「🩺 진단」** 또는 `python -m amsrfid diag` 를 눌러 보세요. 지금 도구가
-보는 pyserial 포트·PM3 장치·클라이언트·원인 힌트를 전부 보여줍니다. 그 출력을 그대로 알려
-주시면 바로 원인을 짚습니다.
-
-클라이언트(`proxmark3.exe`/`pm3.bat`)는 PATH·ProxSpace·릴리스 폴더에서 자동으로 찾고, 없으면
-드라이브까지 뒤져 찾습니다. 그래도 없으면 `pm3_path.txt` 한 줄로 경로를 적으세요.
+검은 화면이나 블루스크린이 다시 발생하면 반복 실행을 멈추고, Windows 중지 코드·실패한
+`.sys` 이름 또는 `C:\Windows\Minidump` 의 최근 덤프로 원인을 확인해야 합니다.
+코드 점검이나 가상 클라이언트 테스트만으로 Windows 드라이버 오류의 해결을 입증할 수는 없습니다.
 
 ## 원터치로 쓰기 (웹 UI)
 
@@ -110,8 +105,9 @@ python -m amsrfid clone      # 원터치로 읽은 뒤 대상 카드에 복제
 python -m amsrfid clone --from out/ams-....bin   # 그 .bin 을 대상 카드에 복제
 python -m amsrfid analyze <파일.bin>   # .bin 조회: 블록0·서명·키·값·복제가능/껍데기 경고
 python -m amsrfid import <파일.bin>    # 외부 .bin 을 out 폴더로 불러오기(+조회)
-python -m amsrfid setup      # 전체 설정: 드라이버→클라이언트 찾기→(필요시)펌웨어 · --flash/--no-flash
-python -m amsrfid driver     # Proxmark3 드라이버 설치(Windows) · --if-needed 로 필요할 때만
+python -m amsrfid setup      # 클라이언트 경로·COM 포트 상태 확인
+python -m amsrfid connect    # hw version 1회로 실제 연결 확인
+python -m amsrfid driver     # 드라이버 안내만 표시
 python -m amsrfid flash      # 펌웨어를 최신으로 플래싱(공식 --flash, fullimage)
 python -m amsrfid info       # 카드 종류만 확인
 python -m amsrfid update     # 배포 브랜치에서 최신본 받기 (--check 면 확인만)
@@ -183,7 +179,7 @@ FM11RF08S 블록 0 = UID(4) · BCC(1) · SAK(1) · ATQA(2) · 제조사 바이�
 
 ```toml
 pm3_path = ""     # 비우면 PATH·ProxSpace 등에서 알아서 찾음
-port     = ""     # 날것 proxmark3 를 쓸 때만
+port     = ""     # 예: COM7, 지정하면 자동 탐지 생략
 outdir   = "out"  # 덤프 저장 폴더
 timeout  = 300    # 키 복구 같은 긴 명령의 제한 시간(초)
 poll     = 1.5    # 장치/카드 다시 볼 간격(초)

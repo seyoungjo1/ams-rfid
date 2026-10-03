@@ -17,7 +17,7 @@ import sys
 from pathlib import Path
 
 from . import __version__, update, workflow
-from .config import Config
+from .config import Config, ConfigError
 from .pm3 import Pm3, Pm3Error
 
 
@@ -44,17 +44,19 @@ def build_parser() -> argparse.ArgumentParser:
     pi = sub.add_parser("import", help="외부 .bin 을 out 폴더로 불러오기(+조회)")
     pi.add_argument("file", help="불러올 .bin 경로")
 
-    pd = sub.add_parser("driver", help="Proxmark3 드라이버 설치(Windows, 공식 proxmark3.inf)")
+    pd = sub.add_parser("driver", help="Proxmark3 드라이버 안내(설치 실행 없음)")
     pd.add_argument("--if-needed", action="store_true",
                     help="장치는 보이는데 드라이버가 없을 때만 설치(조용히 통과)")
 
-    ps = sub.add_parser("setup", help="전체 설정: 드라이버→클라이언트→(필요시)펌웨어")
-    ps.add_argument("--flash", action="store_true", help="펌웨어를 무조건 플래싱")
+    ps = sub.add_parser("setup", help="상태 확인: 클라이언트 경로·COM 포트 확인")
+    ps.add_argument("--flash", action="store_true", help="호환용 옵션 (setup 은 플래싱하지 않음)")
     ps.add_argument("--no-flash", action="store_true", help="펌웨어 플래싱을 건너뜀")
 
     sub.add_parser("flash", help="펌웨어를 최신으로 플래싱(공식 --flash, fullimage)")
 
     sub.add_parser("diag", help="진단: 지금 도구가 보는 COM 포트·USB 장치·클라이언트를 전부 출력")
+
+    sub.add_parser("connect", help="연결 확인: hw version 을 1회 실행(카드 읽기/쓰기 없음)")
 
     sub.add_parser("info", help="카드 종류만 확인")
 
@@ -131,7 +133,7 @@ def cmd_flash(cfg: Config) -> int:
 
 def cmd_diag(cfg: Config) -> int:
     from .pm3 import diagnostics
-    d = diagnostics()
+    d = diagnostics(cfg.pm3_path or None, cfg.port or None)
     print("=== ams-rfid 진단 ===")
     print("OS: %s (%s) · Python %s · PowerShell: %s · pyserial: %s"
           % (d.get("os"), d.get("platform"), d.get("python"), d.get("powershell"), d.get("pyserial")))
@@ -183,10 +185,9 @@ def cmd_info(cfg: Config) -> int:
 
 def main(argv: list[str] | None = None) -> int:
     args = build_parser().parse_args(argv)
-    cfg = Config.load()
-
     cmd = args.cmd
     try:
+        cfg = Config.load()
         if cmd in (None, "menu"):
             from . import menu
             return menu.run(cfg)
@@ -209,6 +210,10 @@ def main(argv: list[str] | None = None) -> int:
             return cmd_flash(cfg)
         if cmd == "diag":
             return cmd_diag(cfg)
+        if cmd == "connect":
+            from .setup import check_connection
+            check_connection(cfg)
+            return 0
         if cmd == "info":
             return cmd_info(cfg)
         if cmd == "update":
@@ -216,7 +221,7 @@ def main(argv: list[str] | None = None) -> int:
         if cmd == "version":
             print("ams-rfid v%s" % __version__)
             return 0
-    except Pm3Error as e:
+    except (Pm3Error, ConfigError) as e:
         print("문제가 생겼습니다: %s" % e, file=sys.stderr)
         return 2
     except KeyboardInterrupt:

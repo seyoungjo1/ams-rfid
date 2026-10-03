@@ -177,3 +177,16 @@ def test_only_one_job_at_a_time(tmp_path, monkeypatch):
     assert app.start_update()["ok"] is True
     second = app.start_update()        # 아직 도는 중 — 거절돼야 한다
     assert second["ok"] is False
+
+
+def test_status_never_enumerates_devices(tmp_path, monkeypatch):
+    from amsrfid import pm3
+    def forbidden(*args, **kwargs):
+        raise AssertionError("background device enumeration")
+    monkeypatch.setattr(pm3, "detect_device", forbidden)
+    monkeypatch.setattr(pm3, "_pyserial_ports", forbidden)
+    monkeypatch.setattr(pm3, "_win_scan", forbidden)
+    app = web.App(_cfg(tmp_path))
+    assert app.status()["device_checked"] is False
+    app._dev = {"present": True, "com": "COM7"}
+    assert app.status()["port"] == "COM7"

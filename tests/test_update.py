@@ -58,3 +58,11 @@ def test_apply_running_bat_deferred(tmp_path, monkeypatch):
     assert res["deferred"] == ["run_v020.bat"]
     assert (tmp_path / "run_v020.bat").read_text() == "new bat\n"
     assert (tmp_path / "run.bat").read_text() == "old bat\n"
+
+
+def test_failed_update_keeps_old_version(tmp_path, monkeypatch):
+    (tmp_path / "VERSION").write_text("0.2.6")
+    monkeypatch.setattr(update, "import_check", lambda *a: ["import failed"])
+    res = update.apply({"VERSION": b"0.2.7", "app.txt": b"updated"}, "0.2.7", tmp_path)
+    assert res["failed"]
+    assert (tmp_path / "VERSION").read_text() == "0.2.6"

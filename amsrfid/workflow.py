@@ -41,15 +41,16 @@ class OneTouchResult:
 def wait_for_device(pm3: Pm3, cfg: Config, echo: Echo = print) -> None:
     """장치가 꽂힐 때까지 **가볍게** 기다린다.
 
-    매 폴링마다 클라이언트를 띄우거나(느림) PowerShell 스캔을 돌리지 않는다. pyserial 로
-    포트만 빠르게 확인하고(저부하), '장치는 보이는데 COM 없음(드라이버 필요)'은 몇 초에 한 번만
-    무거운 PnP 스캔으로 본다.
+    지정된 포트는 그대로 사용한다. 자동 탐지는 pyserial 포트 열거만 사용하며,
+    PowerShell/PnP 전체 조회나 클라이언트 반복 실행은 하지 않는다.
     """
-    from .pm3 import detect_device, _pyserial_ports, _port_is_pm3
+    from .pm3 import _pyserial_ports, _port_is_pm3
+    if pm3.port:
+        echo("  → 지정된 포트 %s 사용" % pm3.port)
+        return
     echo("Proxmark3 를 찾는 중… (데이터 전송용 USB 케이블로 꽂아 주세요)")
     deadline = time.monotonic() + cfg.wait
     first = True
-    last_pnp = 0.0
     while True:
         # 1) 빠른 길: pyserial 로 PM3 포트가 보이면 바로 그 포트를 쓴다.
         ports = _pyserial_ports()
@@ -60,21 +61,6 @@ def wait_for_device(pm3: Pm3, cfg: Config, echo: Echo = print) -> None:
                     echo("  → %s 에서 Proxmark3 감지" % pi["device"])
                     return
         now = time.monotonic()
-        # 2) 무거운 길(드라이버 필요/케이블 문제)은 몇 초에 한 번만.
-        if now - last_pnp > 5:
-            last_pnp = now
-            dev = detect_device()
-            if dev.get("com"):
-                pm3.port = dev["com"]
-                echo("  → %s 에서 Proxmark3 감지" % dev["com"])
-                return
-            if dev.get("needs_driver"):
-                raise DeviceNotFound(
-                    "장치는 보이는데 COM 포트가 없습니다%s. 대개 '충전 전용 USB 케이블'이 원인입니다 — "
-                    "데이터선 케이블 + 본체 USB 포트로 바꿔 꽂아 보세요. 그래도 안 되면 웹 UI 의 "
-                    "'드라이버 등록' 버튼을 쓰세요."
-                    % (" (" + dev.get("name", "") + ")" if dev.get("name") else "")
-                )
         if now > deadline:
             raise DeviceNotFound(
                 "제한 시간(%.0f초) 안에 Proxmark3 를 찾지 못했습니다. '데이터 전송용' USB 케이블인지"
@@ -110,6 +96,8 @@ def identify(pm3: Pm3, echo: Echo = print) -> D.CardInfo:
     res = pm3.run(["hf 14a info", "hf mf info"], timeout=60)
     info = D.parse_14a_info(res.text)
     D.parse_mf_info(res.text, into=info)
+    if not info.uid:
+        raise WorkflowError("카드 UID 를 확인하지 못했습니다.\n" + res.text[-1500:])
     echo("  → %s" % info.summary)
     if not info.is_fm11rf08s:
         echo("  (주의: FM11RF08S 로 보이지 않습니다. 그래도 MIFARE Classic 1K 호환이면 진행합니다.)")

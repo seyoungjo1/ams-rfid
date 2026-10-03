@@ -12,6 +12,7 @@
 """
 from __future__ import annotations
 
+import math
 from dataclasses import dataclass
 from pathlib import Path
 
@@ -25,6 +26,10 @@ except ModuleNotFoundError:              # pragma: no cover
 
 ROOT = Path(__file__).resolve().parent.parent
 CONFIG_NAMES = ("amsrfid.toml", "ams-rfid.toml")
+
+
+class ConfigError(ValueError):
+    pass
 
 
 @dataclass
@@ -54,15 +59,24 @@ class Config:
                 if p.is_file():
                     try:
                         data = _toml.loads(p.read_text(encoding="utf-8-sig"))
-                    except (OSError, ValueError):
-                        data = {}
+                    except (OSError, ValueError) as e:
+                        raise ConfigError("설정 파일 %s 를 읽지 못했습니다: %s. Windows 경로는 작은따옴표로 감싸세요." % (p, e)) from None
                     break
+        numbers = {}
+        for key, default in (("timeout", 300), ("poll", 1.5), ("wait", 120)):
+            try:
+                value = float(data.get(key, default))
+            except (TypeError, ValueError):
+                raise ConfigError("%s 는 양수여야 합니다." % key) from None
+            if not math.isfinite(value) or value <= 0:
+                raise ConfigError("%s 는 유한한 양수여야 합니다." % key)
+            numbers[key] = value
         return cls(
             pm3_path=str(data.get("pm3_path", "") or ""),
             port=str(data.get("port", "") or ""),
             outdir=str(data.get("outdir", "out") or "out"),
-            timeout=float(data.get("timeout", 300) or 300),
-            poll=float(data.get("poll", 1.5) or 1.5),
-            wait=float(data.get("wait", 120) or 120),
+            timeout=numbers["timeout"],
+            poll=numbers["poll"],
+            wait=numbers["wait"],
             root=root,
         )

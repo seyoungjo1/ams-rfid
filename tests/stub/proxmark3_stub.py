@@ -18,7 +18,7 @@ def _parse(argv):
     while i < len(argv):
         a = argv[i]
         if a == "-c" and i + 1 < len(argv):
-            cmds.append(argv[i + 1]); i += 2
+            cmds = [argv[i + 1]]; i += 2  # Upstream keeps only the last -c argument.
         elif a == "-p" and i + 1 < len(argv):
             i += 2
         else:

@@ -6,6 +6,7 @@ Proxmark3GUI 처럼 **시스템을 건드리지 않는다** — 드라이버 자
 """
 from __future__ import annotations
 
+import re
 from typing import Any, Callable
 
 from . import pm3 as P
@@ -35,7 +36,7 @@ def ensure_client(cfg: Config, echo: Echo = print, deep: bool = False) -> str | 
     except P.DeviceNotFound:
         pass
     if deep:
-        echo("· 클라이언트를 드라이브에서 찾는 중… (조금 걸립니다)")
+        echo("· 알려진 설치 폴더에서 클라이언트를 찾는 중…")
         found = P.deep_find_client()
         if found:
             echo("  → 찾음: %s  (pm3_path.txt 에 저장)" % found)
@@ -76,7 +77,11 @@ def bootstrap(cfg: Config, echo: Echo = print, do_flash: bool | None = None) -> 
     do_flash 는 호환용으로 받지만 무시한다(자동 플래싱 제거).
     """
     echo("=== 상태 확인 ===")
-    dev = ensure_driver(echo)                 # 장치 열거는 여기서 '한 번만'
+    if cfg.port:
+        dev = {"present": False, "com": cfg.port}
+        echo("· 지정된 포트 %s 사용 (통신은 읽기 실행 시 확인)" % cfg.port)
+    else:
+        dev = ensure_driver(echo)             # 장치 열거는 여기서 한 번만
     client = ensure_client(cfg, echo, deep=True)
     result = {
         "client": client,
@@ -86,9 +91,25 @@ def bootstrap(cfg: Config, echo: Echo = print, do_flash: bool | None = None) -> 
         "ready": bool(client and dev.get("com")),
     }
     if client and dev.get("com"):
-        echo("=== 준비됨 — '원터치 읽기'를 누르면 카드를 읽습니다 ===")
+        echo("=== 경로·포트 확인됨 — '원터치 읽기'를 누르면 카드를 읽습니다 ===")
     elif client:
         echo("=== 클라이언트는 있는데 장치 포트가 안 잡힙니다(케이블/포트 확인) ===")
     else:
         echo("=== 클라이언트가 없습니다(위 안내 참고) ===")
+    return result
+
+
+def check_connection(cfg: Config, echo: Echo = print) -> dict:
+    """Explicit one-shot connection test; read only hardware version, no RF commands."""
+    result = bootstrap(cfg, echo)
+    if not result["ready"]:
+        raise P.Pm3Error("클라이언트 경로와 COM 포트를 먼저 확인하세요.")
+    pm3 = P.Pm3(client=result["client"], port=result["port"], workdir=cfg.out_path)
+    echo("· 연결 확인: hw version (1회)")
+    version = pm3.run("hw version", timeout=30).text
+    echo(version)
+    if not re.search(r"\bos:\s*\S", version, re.I):
+        raise P.Pm3Error("장치 OS 버전 응답을 확인하지 못했습니다. out/last-pm3.log 를 확인하세요.")
+    result["connected"] = True
+    echo("=== Proxmark3 연결 확인 완료 ===")
     return result

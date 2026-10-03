@@ -74,3 +74,25 @@ def test_e2e_device_and_card_present(tmp_path):
     pm3 = Pm3(client=str(STUB), port="COM_TEST", workdir=cfg.out_path)
     assert pm3.device_present() is True
     assert pm3.card_present() is True
+
+
+def test_first_run_creates_outdir_and_identifies(tmp_path):
+    _make_executable(STUB)
+    cfg = Config(pm3_path=str(STUB.resolve()), port="COM_TEST", root=tmp_path,
+                 timeout=30, poll=0.01, wait=1)
+    assert not cfg.out_path.exists()
+    result = workflow.one_touch(cfg, echo=lambda *a: None)
+    assert result.info.uid == "DEADBEEF"
+    assert result.info.is_fm11rf08s
+    assert result.recovered
+    assert (cfg.out_path / "last-pm3.log").is_file()
+
+
+def test_connection_check_reads_version_only(tmp_path):
+    from amsrfid.setup import check_connection
+    _make_executable(STUB)
+    cfg = Config(pm3_path=str(STUB.resolve()), port="COM_TEST", root=tmp_path)
+    result = check_connection(cfg, echo=lambda *a: None)
+    assert result["connected"] is True
+    assert not list(cfg.out_path.glob("*.bin"))
+    assert "hw version" in (cfg.out_path / "last-pm3.log").read_text()

@@ -64,3 +64,13 @@ def test_deep_find_client_no_crash(tmp_path, monkeypatch):
     monkeypatch.setattr(P, "_root", lambda: tmp_path)   # pm3_path.txt 쓰기 대상
     found = P.deep_find_client()
     assert found and found.endswith("proxmark3")
+
+
+def test_configured_port_skips_enumeration(tmp_path, monkeypatch):
+    cfg = _cfg(tmp_path)
+    cfg.port = "COM7"
+    monkeypatch.setattr(P, "find_client", lambda *a, **k: "proxmark3.exe")
+    def forbidden():
+        raise AssertionError("explicit port must bypass enumeration")
+    monkeypatch.setattr(P, "detect_device", forbidden)
+    assert setup.bootstrap(cfg, echo=lambda *a: None)["port"] == "COM7"

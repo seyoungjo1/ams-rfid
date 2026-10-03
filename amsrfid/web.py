@@ -67,8 +67,6 @@ class App:
     # -- 상태/목록 ---------------------------------------------------------
 
     def status(self) -> dict[str, Any]:
-        import time as _t
-        from .pm3 import detect_device
         info: dict[str, Any] = {"version": __version__, "outdir": str(self.cfg.out_path)}
         try:
             pm3 = Pm3.locate(self.cfg.pm3_path or None, self.cfg.port or None, self.cfg.out_path)
@@ -76,15 +74,11 @@ class App:
         except Pm3Error as e:
             info["pm3"] = None
             info["pm3_error"] = str(e)
-        # 꽂힌 장치/포트/드라이버 상태를 공식 VID:PID 로 탐지. 가볍게 캐시해 폴링 부담을 줄인다.
-        now = _t.monotonic()
-        if now - getattr(self, "_dev_at", 0) > 3:
-            self._dev = detect_device()
-            if self.cfg.port:
-                self._dev["com"] = self.cfg.port
-            self._dev_at = now
+        # Polling displays the last explicit check; it never enumerates USB/PnP.
         dev = getattr(self, "_dev", {})
-        info["port"] = dev.get("com")
+        info["device_checked"] = bool(dev)
+        info["connected"] = dev.get("connected", False)
+        info["port"] = self.cfg.port or dev.get("com")
         info["device_present"] = dev.get("present", False)
         info["needs_driver"] = dev.get("needs_driver", False)
         info["device_name"] = dev.get("name", "")
@@ -93,12 +87,13 @@ class App:
     def install_driver(self) -> dict[str, Any]:
         from .pm3 import install_driver
         ok, msg = install_driver()
-        self._dev_at = 0           # 상태 캐시를 비워 다음 status 에서 다시 본다
         return {"ok": ok, "message": msg}
 
     def diag(self) -> dict[str, Any]:
         from .pm3 import diagnostics
-        return diagnostics()
+        result = diagnostics(self.cfg.pm3_path or None, self.cfg.port or None)
+        self._dev = result["device"]
+        return result
 
     def dumps(self) -> list[dict[str, Any]]:
         out = self.cfg.out_path
@@ -191,15 +186,26 @@ class App:
 
     def start_update(self) -> dict[str, Any]:
         def target(job: Job) -> None:
-            update.run(check_only=False, root=self.cfg.root, echo=job.log)
+            if update.run(check_only=False, root=self.cfg.root, echo=job.log):
+                job.error = "업데이트가 완료되지 않았습니다. 로그를 확인하세요."
 
         return self._start("update", target)
+
+    def start_connect(self) -> dict[str, Any]:
+        from . import setup
+        def target(job: Job) -> None:
+            self._dev = {}
+            result = setup.check_connection(self.cfg, echo=job.log)
+            self._dev = {"present": True, "com": result["port"], "connected": True}
+            job.result = result
+        return self._start("connect", target)
 
     def start_setup(self) -> dict[str, Any]:
         from . import setup
         def target(job: Job) -> None:
             res = setup.bootstrap(self.cfg, echo=job.log, do_flash=None)
-            self._dev_at = 0           # 상태 캐시 비우기
+            self._dev = {"present": res.get("device_present", False),
+                         "com": res.get("port"), "needs_driver": False}
             if not res.get("ready"):
                 job.error = "설정이 끝나지 않았습니다(클라이언트 없음 등)."
 
@@ -286,6 +292,8 @@ def _make_handler(app: App):
                 return self._send_json(app.start_update())
             if path == "/api/driver":
                 return self._send_json(app.install_driver())
+            if path == "/api/connect":
+                return self._send_json(app.start_connect())
             if path == "/api/setup":
                 return self._send_json(app.start_setup())
             if path == "/api/clone":

@@ -1,7 +1,7 @@
 """Proxmark3 클라이언트를 감싼다 — 찾고, 명령을 돌리고, 글자 출력을 돌려준다.
 
 Proxmark3 Iceman 펌웨어/클라이언트를 쓴다. 클라이언트는 명령 한 줄을 돌리고 빠지는
-`-c` 방식을 쓴다(`pm3 -c "hf mf info"`). 여러 줄은 `-c` 를 여러 번 넘겨 차례로 돌린다.
+`-c` 방식을 쓴다(`pm3 -c "hf mf info"`). 여러 명령은 하나의 `-c` 인자 안에서 세미콜론으로 구분한다.
 
 실행 파일 찾는 순서
   1) config 의 pm3_path
@@ -34,27 +34,16 @@ class DeviceNotFound(Pm3Error):
 
 # 흔한 설치 위치 — 윈도우(ProxSpace/릴리스)와 리눅스/맥을 함께 본다.
 _WIN_GLOBS = [
+    r"C:\ProxSpace\pm3\proxmark3\client\proxmark3.exe",
+    r"C:\ProxSpace\pm3\proxmark3\client\build\proxmark3.exe",
     r"C:\ProxSpace\pm3\pm3.bat",
-    r"C:\ProxSpace\pm3\proxmark3.exe",
-    r"C:\ProxSpace\**\pm3.bat",
-    r"C:\ProxSpace\**\proxmark3.exe",
-    r"C:\Program Files*\proxmark3\**\pm3.bat",
-    r"C:\Program Files*\proxmark3\**\proxmark3.exe",
-    r"C:\proxmark3\**\pm3.bat",
-    r"C:\proxmark3\**\proxmark3.exe",
-    r"C:\tools\**\proxmark3.exe",
+    r"C:\ProxSpace\pm3\client\proxmark3.exe",
+    r"C:\ProxSpace\pm3\client\build\proxmark3.exe",
+    r"C:\proxmark3\proxmark3.exe",
+    r"C:\proxmark3\client\proxmark3.exe",
 ]
 
 
-def _win_user_globs() -> list[str]:
-    """사용자 폴더·다운로드 밑에 풀어 둔 릴리스도 본다."""
-    pats: list[str] = []
-    for base in filter(None, [os.environ.get("USERPROFILE"), os.environ.get("LOCALAPPDATA")]):
-        pats += [
-            base + r"\**\pm3.bat",
-            base + r"\**\proxmark3.exe",
-        ]
-    return pats
 _NIX_CANDIDATES = [
     "/usr/local/bin/pm3",
     "/usr/bin/pm3",
@@ -81,28 +70,21 @@ def _cheap_candidates(configured: str | None) -> list[str]:
     for c in (configured, os.environ.get("AMSRFID_PM3"), _path_txt()):
         if c:
             cands.append(c.strip().strip('"'))
-    for name in _NAMES:
+    if cands:
+        return cands  # Explicit configuration must not trigger installation searches.
+    for name in (("proxmark3.exe", "pm3.bat") if os.name == "nt" else _NAMES):
         found = shutil.which(name)
         if found:
             cands.append(found)
     if os.name == "nt":
-        for pat in _WIN_GLOBS + _win_user_globs():
+        for pat in _WIN_GLOBS:
             try:
-                cands.extend(sorted(glob.glob(pat, recursive=True)))
+                cands.extend(sorted(glob.glob(pat)))
             except OSError:
                 pass
     else:
         cands.extend(_NIX_CANDIDATES)
     return cands
-
-
-# 깊은 탐색에서 건너뛸(느리고 의미 없는) 디렉터리 이름들.
-_SKIP_DIRS = {
-    "windows", "$recycle.bin", "system volume information", "node_modules", ".git",
-    "appdata", "winsxs", "assembly", "installer", "temp", "tmp", "cache",
-    "microsoft", "packages", "program files (arm)",
-}
-_TARGET_NAMES = {"proxmark3.exe", "pm3.bat", "pm3", "proxmark3"}
 
 
 def _scan_roots() -> list[Path]:
@@ -145,12 +127,6 @@ def _scan_roots() -> list[Path]:
 
 
 def deep_find_client(max_dirs: int = 4000, max_depth: int = 5) -> str | None:
-    """흔한 폴더만 **얕고 짧게** 뒤져 pm3 실행 파일을 찾는다(드라이브 전체 스캔 아님).
-
-    개수·깊이를 빡빡하게 제한하고 시스템/거대 폴더는 건너뛴다 — 멈추거나 죽지 않게.
-    찾으면 pm3_path.txt 에 적어 다음부턴 즉시 찾게 한다.
-    """
-def deep_find_client(max_dirs: int = 4000, max_depth: int = 5) -> str | None:
     """흔한 폴더에서 pm3 실행 파일을 **얕은 glob 으로만** 찾는다(재귀 os.walk 안 함).
 
     과거 드라이브 전체 os.walk 가 시스템을 멈추게/죽게 한 사례가 있어, 재귀 탐색을 전부
@@ -187,11 +163,11 @@ def deep_find_client(max_dirs: int = 4000, max_depth: int = 5) -> str | None:
 def find_client(configured: str | None = None, deep: bool = False) -> str:
     """pm3 실행 파일 경로를 돌려준다. 못 찾으면 DeviceNotFound.
 
-    deep=True 면 흔한 위치에서 못 찾았을 때 드라이브/사용자 폴더를 뒤져(느림) 찾아낸다.
+    deep=True 면 흔한 위치에서 못 찾았을 때 제한된 깊이로 설치 폴더를 찾는다.
     """
     for c in _cheap_candidates(configured):
         if c and Path(c).is_file():
-            return c
+            return str(Path(c).resolve())
     if deep:
         found = deep_find_client()
         if found:
@@ -241,7 +217,11 @@ def _pyserial_ports() -> list[dict] | None:
     except Exception:
         return None
     out = []
-    for p in comports():
+    try:
+        ports = comports()
+    except OSError as e:
+        raise DeviceNotFound("COM 포트 목록을 읽지 못했습니다: %s. amsrfid.toml 에 port 를 직접 지정할 수 있습니다." % e) from None
+    for p in ports:
         manuf = getattr(p, "manufacturer", "") or ""
         serial = getattr(p, "serial_number", "") or ""
         desc = " ".join(filter(None, [
@@ -316,12 +296,12 @@ def _reg_serialcomm() -> list[str]:
     return sorted(set(coms))
 
 
-def detect_device() -> dict:
+def detect_device(include_pnp: bool = False) -> dict:
     """꽂힌 Proxmark3 를 '드라이버 유무까지' 본다.
 
     1순위: pyserial 로 PM3 의 COM 포트를 찾는다(Proxmark3GUI·ProxSpace 와 같은 검증된 방식).
-    COM 포트가 안 보이면(드라이버 없음 등) Windows 는 PnP 전체를 뒤져 '장치는 있는데 COM 이
-    없다'(=드라이버 필요)를 가려낸다.
+    기본은 pyserial 포트 열거만 한다. include_pnp=True 를 명시할 때만
+    Windows 전체 PnP 조회를 허용한다. 포트를 직접 열지는 않는다.
     """
     res = {"present": False, "com": None, "needs_driver": False, "name": "", "status": ""}
 
@@ -344,6 +324,8 @@ def detect_device() -> dict:
         return res
 
     # Windows: COM 으로 안 잡혔다 → PnP 전체에서 PM3 를 찾아 '드라이버 필요'인지 본다
+    if not include_pnp:
+        return res
     rows = _win_scan()
     pm3 = [(n, e, p) for (n, e, p) in rows if _pm3_match(p)]
     for (n, e, p) in rows:
@@ -383,7 +365,7 @@ def _auto_port() -> str | None:
     return detect_port()
 
 
-def diagnostics() -> dict:
+def diagnostics(configured: str | None = None, port: str | None = None) -> dict:
     """진단용 — 도구가 '지금 무엇을 보는지' 전부 모아 돌려준다(USB 인식 문제 추적)."""
     d: dict = {"os": os.name, "platform": sys.platform, "python": sys.version.split()[0]}
     ports = _pyserial_ports()
@@ -405,9 +387,18 @@ def diagnostics() -> dict:
                           for g in sorted(glob.glob(pat))]
         d["pm3_devices"] = []
         d["registry_com"] = []
-    d["device"] = detect_device()
+    d["device"] = {"present": False, "com": None, "needs_driver": False, "name": ""}
+    for info in ports or []:
+        if _port_is_pm3(info):
+            d["device"].update(present=True, com=info["device"], name=info.get("desc", ""))
+            break
+    if not d["device"]["present"] and d["pm3_devices"]:
+        info = d["pm3_devices"][0]
+        com = _com_of(info["name"])
+        d["device"].update(present=True, com=com, needs_driver=not bool(com), name=info["name"])
+    d["configured_port"] = port
     try:
-        d["client"] = find_client(deep=True)
+        d["client"] = find_client(configured)
     except DeviceNotFound:
         d["client"] = None
     # 흔한 진짜 원인 힌트
@@ -422,14 +413,6 @@ def default_inf() -> Path:
     return _root() / "drivers" / "proxmark3.inf"
 
 
-def install_driver(inf: str | Path | None = None) -> tuple[bool, str]:
-    """드라이버를 **안전하게** 등록한다 — 사용자가 직접 눌렀을 때만 호출할 것(자동 호출 금지).
-
-    과거 `pnputil /add-driver ... /install` 은 **살아 있는 usbser 드라이버를 강제로 다시
-    설치**하면서 시스템 오류(BSOD)를 낸 적이 있다. 그래서 `/install` 을 떼고 **드라이버
-    스토어에 등록만**(`/add-driver`) 한다 — 살아 있는 장치를 건드리지 않는다. 등록 후 장치를
-    뽑았다 다시 꽂으면 Windows 가 알아서 붙인다. Windows 10/11 은 대개 이것도 필요 없다.
-    """
 def install_driver(inf: str | Path | None = None) -> tuple[bool, str]:
     """드라이버는 **실행으로 설치하지 않는다** — 안내만 한다(pnputil 호출 제거).
 
@@ -456,31 +439,27 @@ def find_firmware_images(client: str) -> dict:
     """
     out = {"fullimage": None, "bootrom": None}
     base = Path(client).resolve().parent
-    roots = [base] + list(base.parents)[:3]
+    # Only known package layouts; never recurse into an ancestor drive/home.
+    roots = [base, base.parent]
+    if base.name.lower() == "build":
+        roots.append(base.parent.parent)
     for root in roots:
-        try:
-            for name in ("fullimage.elf", "bootrom.elf"):
-                key = "fullimage" if name.startswith("full") else "bootrom"
-                if out[key]:
-                    continue
-                hits = sorted(root.glob("**/" + name))
-                if hits:
-                    out[key] = str(hits[0])
-        except OSError:
-            pass
-        if out["fullimage"] and out["bootrom"]:
-            break
+        for name, key, subdir in (("fullimage.elf", "fullimage", "armsrc"),
+                                  ("bootrom.elf", "bootrom", "bootrom")):
+            for candidate in (root / name, root / subdir / "obj" / name):
+                if not out[key] and candidate.is_file():
+                    out[key] = str(candidate)
     return out
 
 
 # 터미널 색상(ANSI) 이스케이프 — 문자열 매칭 전에 벗겨 낸다(pm3.bat 빌드가 색을 흘릴 때 대비).
 _ANSI = re.compile(r"(\x9B|\x1B\[)[0-?]*[ -/]*[@-~]")
 
-# '장치와 통신 실패'로 보이는 출력 — 포트가 바뀌었을 수 있으니 재탐지·재시도의 신호.
+# 명시적인 연결 실패만 감지한다. 정상 'Using serial port' 배너는 제외한다.
 _DISCONNECT_HINTS = (
-    "offline", "cannot communicate", "communicating with the proxmark",
-    "failed to open", "unable to open", "no response", "comm error",
-    "proxmark3 not found", "reconnect", "serial port", "device not found",
+    "offline mode", "cannot communicate with the proxmark", "comm error",
+    "failed to open serial", "unable to open serial", "could not open port",
+    "proxmark3 not found", "device not found", "communication timeout",
 )
 
 
@@ -542,52 +521,70 @@ class Pm3:
         # 포트를 알면 래퍼(pm3/pm3.bat)든 날것(proxmark3.exe)이든 -p 로 넘긴다.
         # 래퍼의 자체 자동탐지는 Easy(502D:502D)를 놓치므로, 우리가 찾은 포트를 직접 준다.
         port = self._resolved_port()
-        if port:
-            args.extend(["-p", port])
+        if not port:
+            raise DeviceNotFound("Proxmark3 포트를 찾지 못했습니다. amsrfid.toml 의 port 를 지정하거나 상태 확인을 실행하세요.")
+        args.extend(["-p", port])
         args.extend(self.extra_args)
-        for c in commands:
-            args.extend(["-c", c])
+        if not commands or any(not c.strip() for c in commands):
+            raise Pm3Error("실행할 pm3 명령이 없습니다.")
+        args.extend(["-c", "; ".join(commands)])
         return args
 
     def _run_subprocess(self, args: list[str], timeout: float) -> Pm3Result:
         try:
+            if self.workdir:
+                self.workdir.mkdir(parents=True, exist_ok=True)
             done = subprocess.run(
                 args,
+                stdin=subprocess.DEVNULL,
                 cwd=str(self.workdir) if self.workdir else None,
                 capture_output=True,
                 timeout=timeout,
             )
-        except FileNotFoundError as e:
+        except OSError as e:
             raise DeviceNotFound("pm3 를 실행하지 못했습니다: %s" % e) from None
-        except subprocess.TimeoutExpired:
-            raise Pm3Error("pm3 명령이 %.0f초 안에 끝나지 않았습니다." % timeout) from None
+        except subprocess.TimeoutExpired as e:
+            partial = Pm3Result(-1, (e.stdout or b"").decode("utf-8", "replace"),
+                                (e.stderr or b"").decode("utf-8", "replace"))
+            self._save_log(args, partial)
+            raise Pm3Error("pm3 명령이 %.0f초 안에 끝나지 않았습니다. 자동 재시도하지 않습니다.\n%s"
+                           % (timeout, partial.text[-2000:])) from None
         out = (done.stdout or b"").decode("utf-8", "replace")
         err = (done.stderr or b"").decode("utf-8", "replace")
-        return Pm3Result(done.returncode, out, err)
+        result = Pm3Result(done.returncode, out, err)
+        self._save_log(args, result)
+        return result
+
+    def _save_log(self, args: list[str], result: Pm3Result) -> None:
+        if self.workdir:
+            try:
+                (self.workdir / "last-pm3.log").write_text(
+                    "Command: %r\nExit: %s\n%s" % (args, result.returncode, result.text),
+                    encoding="utf-8")
+            except OSError:
+                pass  # Log failure must not mask the client's actual result.
 
     def run(self, commands: str | list[str], timeout: float = 180) -> Pm3Result:
         """명령(들)을 차례로 돌리고 출력을 모아 돌려준다.
 
-        replug/리셋으로 포트가 바뀌면(COM7→COM8) 캐시된 포트로는 조용히 실패하므로,
-        끊김 신호가 보이면 포트를 비우고 한 번 다시 찾아 딱 한 번 재시도한다.
+        통신이 끊겨도 명령을 자동 재실행하지 않는다(쓰기 중복 실행 방지).
         """
         if isinstance(commands, str):
             commands = [commands]
-        res = self._run_subprocess(self._build_args(commands), timeout)
-        if _looks_disconnected(res.text):
-            old = self.port
-            self.port = None
-            fresh = self._resolved_port()          # 새로 탐지
-            if fresh and fresh != old:
-                res = self._run_subprocess(self._build_args(commands), timeout)
-        return res
+        # Never replay commands: a write can have completed before disconnection.
+        result = self._run_subprocess(self._build_args(commands), timeout)
+        if result.returncode != 0 or _looks_disconnected(result.text):
+            raise Pm3Error("pm3 실행/연결 실패 (포트 %s, 종료 코드 %s). 다른 pm3 프로그램을 종료하고 경로·COM 포트를 확인하세요.\n%s"
+                           % (self.port, result.returncode, result.text[-2000:]))
+        return result
 
     def run_raw(self, extra: list[str], timeout: float = 300) -> Pm3Result:
         """`-c` 없이 클라이언트를 직접 호출한다(플래싱 등). 플래싱은 자동 재시도하지 않는다."""
         args = [self.client]
         port = self._resolved_port()
-        if port:
-            args.extend(["-p", port])
+        if not port:
+            raise DeviceNotFound("Proxmark3 포트를 찾지 못했습니다. amsrfid.toml 의 port 를 지정하거나 상태 확인을 실행하세요.")
+        args.extend(["-p", port])
         args.extend(extra)
         return self._run_subprocess(args, timeout)
 
@@ -600,7 +597,7 @@ class Pm3:
         except Pm3Error:
             return False
         t = res.text.lower()
-        return ("proxmark3" in t and "os:" in t) or "firmware" in t or "client:" in t
+        return bool(re.search(r"\bos:\s*\S", t))
 
     def firmware_version(self) -> str:
         """`hw version` 출력을 돌려준다(펌웨어/클라이언트 버전 확인용)."""
@@ -619,10 +616,7 @@ class Pm3:
 
     def card_present(self) -> bool:
         """14a 태그(카드)가 안테나 위에 있는지."""
-        try:
-            res = self.run("hf 14a info", timeout=30)
-        except Pm3Error:
-            return False
+        res = self.run("hf 14a info", timeout=30)
         t = res.text
         low = t.lower()
         if "failed" in low or "no answer" in low or "no known" in low:
