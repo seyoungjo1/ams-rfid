@@ -10,6 +10,7 @@ from . import __version__, update
 from .config import Config
 from . import workflow
 from .pm3 import Pm3, Pm3Error
+from .setup import prepare_device
 
 
 def _list_bins(cfg: Config) -> list[Path]:
@@ -64,8 +65,7 @@ def run(cfg: Config | None = None) -> int:
                 print("\n주의: 대상 카드의 내용을 덮어씁니다. 본인 소유/권한 있는 카드만 쓰세요.")
                 if input("계속하려면 y: ").strip().lower() != "y":
                     continue
-                pm3 = Pm3.locate(cfg.pm3_path or None, cfg.port or None, cfg.out_path, deep=False)
-                workflow.wait_for_device(pm3, cfg, print)
+                pm3 = prepare_device(cfg, print)
                 workflow.clone_to_card(pm3, src, cfg, print)
             elif choice == "3":
                 bins = _list_bins(cfg)

@@ -32,8 +32,8 @@ REPO = "seyoungjo1/ams-rfid"
 BRANCH = "claude/lucid-hamilton-2c2r4r"
 API = "https://api.github.com"
 
-EXCLUDE_EXACT = {"token.txt", "amsrfid.toml", "ams-rfid.toml"}
-EXCLUDE_PREFIX = ("out/", "venv", ".venv", "backup/", "__pycache__/", ".git/", "tests/")
+EXCLUDE_EXACT = {"token.txt", "amsrfid.toml", "ams-rfid.toml", "pm3_path.txt"}
+EXCLUDE_PREFIX = (".runtime/", "out/", "venv", ".venv", "backup/", "__pycache__/", ".git/", "tests/")
 
 
 class UpdateError(Exception):

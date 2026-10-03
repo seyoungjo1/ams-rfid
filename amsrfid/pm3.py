@@ -20,8 +20,12 @@ import re
 import shutil
 import subprocess
 import sys
+import queue
+import threading
+import time
 from dataclasses import dataclass, field
 from pathlib import Path
+from typing import Callable
 
 
 class Pm3Error(Exception):
@@ -70,6 +74,10 @@ def _cheap_candidates(configured: str | None) -> list[str]:
     for c in (configured, os.environ.get("AMSRFID_PM3"), _path_txt()):
         if c:
             cands.append(c.strip().strip('"'))
+    from .runtime import installed_client
+    managed = installed_client(_root())
+    if managed:
+        cands.append(managed)
     if cands:
         return cands  # Explicit configuration must not trigger installation searches.
     for name in (("proxmark3.exe", "pm3.bat") if os.name == "nt" else _NAMES):
@@ -468,6 +476,13 @@ def _looks_disconnected(text: str) -> bool:
     return any(h in t for h in _DISCONNECT_HINTS)
 
 
+def quoted_path(path: str | Path) -> str:
+    value = str(Path(path).resolve())
+    if any(c in value for c in ('"', ';', '\r', '\n')):
+        raise Pm3Error("파일 경로에 큰따옴표·세미콜론·줄바꿈을 사용할 수 없습니다.")
+    return '"' + value + '"'
+
+
 @dataclass
 class Pm3Result:
     returncode: int
@@ -488,6 +503,7 @@ class Pm3:
     port: str | None = None
     workdir: Path | None = None
     extra_args: list[str] = field(default_factory=list)
+    echo: Callable[[str], None] | None = None
 
     @classmethod
     def locate(
@@ -527,31 +543,68 @@ class Pm3:
         args.extend(self.extra_args)
         if not commands or any(not c.strip() for c in commands):
             raise Pm3Error("실행할 pm3 명령이 없습니다.")
-        args.extend(["-c", "; ".join(commands)])
+        args.extend(["-f", "-c", "; ".join(commands)])
         return args
 
     def _run_subprocess(self, args: list[str], timeout: float) -> Pm3Result:
+        from .runtime import client_environment
+        if self.echo:
+            self.echo("▶ " + " ".join(args[1:]))
         try:
             if self.workdir:
                 self.workdir.mkdir(parents=True, exist_ok=True)
-            done = subprocess.run(
-                args,
-                stdin=subprocess.DEVNULL,
-                cwd=str(self.workdir) if self.workdir else None,
-                capture_output=True,
-                timeout=timeout,
+            process = subprocess.Popen(
+                args, stdin=subprocess.DEVNULL, stdout=subprocess.PIPE,
+                stderr=subprocess.STDOUT, cwd=str(self.workdir) if self.workdir else None,
+                env=client_environment(self.client),
+                creationflags=subprocess.CREATE_NO_WINDOW if os.name == "nt" else 0,
             )
         except OSError as e:
             raise DeviceNotFound("pm3 를 실행하지 못했습니다: %s" % e) from None
-        except subprocess.TimeoutExpired as e:
-            partial = Pm3Result(-1, (e.stdout or b"").decode("utf-8", "replace"),
-                                (e.stderr or b"").decode("utf-8", "replace"))
-            self._save_log(args, partial)
-            raise Pm3Error("pm3 명령이 %.0f초 안에 끝나지 않았습니다. 자동 재시도하지 않습니다.\n%s"
-                           % (timeout, partial.text[-2000:])) from None
-        out = (done.stdout or b"").decode("utf-8", "replace")
-        err = (done.stderr or b"").decode("utf-8", "replace")
-        result = Pm3Result(done.returncode, out, err)
+        chunks: queue.Queue = queue.Queue()
+        def read_output():
+            try:
+                # Universal newlines also expose CR-only progress updates.
+                import io
+                with io.TextIOWrapper(process.stdout, encoding="utf-8", errors="replace") as stream:
+                    for line in stream:
+                        chunks.put(line)
+            finally:
+                chunks.put(None)
+        reader = threading.Thread(target=read_output, daemon=True)
+        reader.start()
+        deadline = time.monotonic() + timeout
+        lines = []
+        finished = False
+        try:
+            while not finished:
+                remaining = deadline - time.monotonic()
+                if remaining <= 0:
+                    raise subprocess.TimeoutExpired(args, timeout)
+                try:
+                    line = chunks.get(timeout=min(remaining, 0.2))
+                except queue.Empty:
+                    continue
+                if line is None:
+                    finished = True
+                else:
+                    lines.append(line)
+                    if self.echo:
+                        self.echo(_ANSI.sub("", line).rstrip())
+            process.wait(timeout=max(0.01, deadline - time.monotonic()))
+        except subprocess.TimeoutExpired:
+            process.kill()
+            process.wait()
+            result = Pm3Result(-1, "".join(lines), "시간 제한 초과")
+            self._save_log(args, result)
+            raise Pm3Error("pm3 명령 시간 제한(%s초) 초과. 자동 재시도하지 않습니다.\n%s"
+                           % (timeout, result.text[-2000:])) from None
+        finally:
+            if process.poll() is None:
+                process.kill()
+                process.wait()
+            reader.join(timeout=1)
+        result = Pm3Result(process.returncode, "".join(lines), "")
         self._save_log(args, result)
         return result
 

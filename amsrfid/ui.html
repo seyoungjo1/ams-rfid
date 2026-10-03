@@ -1,365 +1,73 @@
 <!doctype html>
 <html lang="ko">
 <head>
-<meta charset="utf-8">
-<meta name="viewport" content="width=device-width, initial-scale=1">
-<title>ams-rfid</title>
+<meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1">
+<title>ams-rfid · 원터치 읽기와 쓰기</title>
 <style>
-  :root{
-    --bg:#0e1116; --panel:#161b22; --panel2:#1c232d; --line:#2a323d;
-    --fg:#e6edf3; --muted:#9aa7b4; --accent:#3fb6a8; --accent-ink:#06241f;
-    --warn:#e3b341; --bad:#f06d6d; --good:#59c67f; --radius:14px;
-  }
-  @media (prefers-color-scheme: light){
-    :root:not([data-theme="dark"]){
-      --bg:#f3f5f8; --panel:#ffffff; --panel2:#f0f3f7; --line:#dde3ea;
-      --fg:#111820; --muted:#5a6675; --accent:#157d72; --accent-ink:#ffffff;
-    }
-  }
-  *{box-sizing:border-box}
-  html,body{margin:0}
-  body{
-    background:var(--bg); color:var(--fg);
-    font-family:"Segoe UI",system-ui,-apple-system,"Malgun Gothic","Apple SD Gothic Neo",sans-serif;
-    line-height:1.5; padding:0 16px 48px;
-  }
-  .wrap{max-width:860px; margin:0 auto}
-  header{display:flex; align-items:center; gap:12px; padding:22px 2px 14px}
-  .logo{width:34px;height:34px;border-radius:9px;background:linear-gradient(135deg,var(--accent),#6ea8fe);
-        display:grid;place-items:center;font-weight:800;color:var(--accent-ink);font-size:15px}
-  h1{font-size:19px; margin:0; letter-spacing:.2px}
-  .ver{color:var(--muted); font-size:12px}
-  .spacer{flex:1}
-  .chip{display:inline-flex;align-items:center;gap:7px;font-size:12.5px;padding:6px 11px;
-        border:1px solid var(--line);border-radius:999px;background:var(--panel);color:var(--muted)}
-  .dot{width:8px;height:8px;border-radius:50%;background:var(--muted)}
-  .dot.ok{background:var(--good)} .dot.no{background:var(--bad)}
-  .card{background:var(--panel);border:1px solid var(--line);border-radius:var(--radius);
-        padding:18px;margin:14px 0}
-  .banner{display:flex;gap:10px;background:color-mix(in srgb,var(--warn) 14%,transparent);
-          border:1px solid color-mix(in srgb,var(--warn) 45%,var(--line));color:var(--fg);
-          font-size:13px;border-radius:12px;padding:12px 14px;margin:8px 0 2px}
-  .banner b{color:var(--warn)}
-  h2{font-size:14px;margin:0 0 10px;color:var(--muted);font-weight:600;text-transform:none;letter-spacing:.3px}
-  .btn{appearance:none;border:1px solid var(--line);background:var(--panel2);color:var(--fg);
-       font-size:14px;font-weight:600;padding:11px 16px;border-radius:11px;cursor:pointer;
-       transition:transform .05s ease,border-color .15s,background .15s}
-  .btn:hover{border-color:var(--accent)}
-  .btn:active{transform:translateY(1px)}
-  .btn:disabled{opacity:.45;cursor:not-allowed}
-  .btn.primary{background:var(--accent);color:var(--accent-ink);border-color:transparent;
-       font-size:16px;padding:15px 20px;width:100%}
-  .btn.sm{padding:7px 12px;font-size:13px}
-  .hint{color:var(--muted);font-size:13px;margin:10px 2px 0}
-  .row{display:flex;gap:10px;flex-wrap:wrap;align-items:center}
-  .log{background:#0b0e13;border:1px solid var(--line);border-radius:11px;padding:12px 14px;
-       font-family:"Cascadia Code",ui-monospace,Menlo,Consolas,monospace;font-size:12.5px;
-       color:#cdd6e0;min-height:120px;max-height:320px;overflow:auto;white-space:pre-wrap;word-break:break-word}
-  .log:empty::before{content:"진행 상황이 여기에 표시됩니다.";color:var(--muted)}
-  @media (prefers-color-scheme: light){:root:not([data-theme="dark"]) .log{background:#0e1116;color:#cdd6e0}}
-  .dumps{display:flex;flex-direction:column;gap:8px}
-  .dump{display:flex;align-items:center;gap:12px;background:var(--panel2);border:1px solid var(--line);
-        border-radius:11px;padding:10px 12px}
-  .dump .name{font-family:ui-monospace,Consolas,monospace;font-size:13px;word-break:break-all}
-  .dump .size{color:var(--muted);font-size:12px;margin-left:auto;white-space:nowrap}
-  .empty{color:var(--muted);font-size:13px;padding:6px 2px}
-  .result{margin-top:12px;font-size:13.5px;border-radius:11px;padding:11px 13px;display:none}
-  .result.show{display:block}
-  .result.ok{background:color-mix(in srgb,var(--good) 14%,transparent);border:1px solid color-mix(in srgb,var(--good) 45%,var(--line))}
-  .result.err{background:color-mix(in srgb,var(--bad) 13%,transparent);border:1px solid color-mix(in srgb,var(--bad) 45%,var(--line))}
-  footer{color:var(--muted);font-size:12px;text-align:center;margin-top:22px}
-  a{color:var(--accent)}
+:root{color-scheme:dark;--bg:#10151d;--panel:#19212d;--border:#334154;--fg:#ecf1f7;--muted:#a9b8cb;--accent:#65dfc3;--error:#ffb0a9}
+*{box-sizing:border-box}body{margin:0;background:var(--bg);color:var(--fg);font:16px/1.6 "Segoe UI","Malgun Gothic",sans-serif}main{max-width:960px;margin:auto;padding:28px 20px 64px}header{display:flex;align-items:center;justify-content:space-between;gap:16px}h1{font-size:24px;margin:0}h2{font-size:18px;margin:0 0 12px}p{margin:8px 0}.muted,small{color:var(--muted)}section{background:var(--panel);border:1px solid var(--border);border-radius:16px;padding:22px;margin-top:18px}button,.button{border:1px solid var(--border);border-radius:10px;padding:12px 18px;background:#253347;color:var(--fg);font:inherit;cursor:pointer}button:disabled{opacity:.45;cursor:wait}button:focus-visible,summary:focus-visible{outline:3px solid var(--accent);outline-offset:3px}.primary{background:var(--accent);color:#10241f;font-weight:700;border-color:transparent;width:100%;font-size:19px}.actions{display:flex;gap:10px;flex-wrap:wrap}.steps{display:flex;gap:8px;list-style:none;padding:0;margin:20px 0;flex-wrap:wrap}.steps li{flex:1;min-width:90px;border-bottom:3px solid var(--border);padding:8px 0;color:var(--muted);font-size:14px}.steps li.active{border-color:var(--accent);color:var(--accent);font-weight:700}.steps li.done{border-color:#387b70;color:var(--fg)}#phase{font-size:24px;font-weight:700}#elapsed{font-variant-numeric:tabular-nums}#indicator{display:inline-block;width:11px;height:11px;border-radius:50%;background:#718197;margin-right:8px}.running #indicator{background:var(--accent);animation:pulse 1s infinite alternate}.failed #indicator{background:var(--error)}@keyframes pulse{to{opacity:.3}}.notice{border-left:4px solid var(--accent);padding:14px 16px;background:#21362f;margin:16px 0}.error{color:var(--error)}pre{white-space:pre-wrap;overflow-wrap:anywhere;background:#0b1017;border:1px solid var(--border);border-radius:10px;padding:16px;max-height:360px;overflow:auto;font:13px/1.5 Consolas,monospace;min-height:100px}summary{cursor:pointer;color:var(--muted)}.dump{display:flex;align-items:center;gap:8px;padding:12px 0;border-bottom:1px solid var(--border)}.dump span{flex:1;overflow-wrap:anywhere;font-size:14px}.dump button{font-size:13px;padding:7px 10px}[hidden]{display:none!important}#result{white-space:pre-wrap}.badge{border:1px solid var(--border);border-radius:99px;padding:5px 10px;font-size:12px;color:var(--muted)}@media(max-width:550px){main{padding:18px 12px}section{padding:16px}.dump{flex-wrap:wrap}header{align-items:flex-start}.steps li{min-width:60px;font-size:12px}}
 </style>
 </head>
-<body>
-<div class="wrap">
-  <header>
-    <div class="logo">RF</div>
-    <div>
-      <h1>ams-rfid</h1>
-      <div class="ver">FM11RF08S 원터치 도구 · <span id="ver">v…</span></div>
-    </div>
-    <div class="spacer"></div>
-    <span class="chip"><span class="dot" id="pm3dot"></span><span id="pm3txt">장치 확인 중…</span></span>
-  </header>
-
-  <div class="banner">
-    <div>⚠️</div>
-    <div><b>본인 소유이거나 점검 권한이 있는 카드에만</b> 사용하세요. 남의 카드를 허락 없이
-      복제하는 것은 불법입니다. 복제(쓰기)는 대상 카드를 덮어쓰며 되돌릴 수 없습니다.</div>
-  </div>
-
-  <div class="banner" id="driverBanner" style="display:none;background:color-mix(in srgb,var(--bad) 13%,transparent);border-color:color-mix(in srgb,var(--bad) 45%,var(--line))">
-    <div>🔌</div>
-    <div style="flex:1">
-      <b id="driverMsg">장치는 보이는데 COM 포트가 없습니다.</b>
-      데이터 USB 케이블, COM 포트, 드라이버 상태를 확인하세요. 아래 버튼은 안내를 표시합니다.
-    </div>
-    <button class="btn sm" id="btnDriver" style="align-self:center">드라이버 안내</button>
-  </div>
-
-  <div class="card">
-    <h2>준비 상태 확인</h2>
-    <button class="btn" id="btnSetup" style="width:100%">🔎 장치·클라이언트 상태 확인</button>
-    <button class="btn" id="btnConnect" style="width:100%;margin-top:8px">🔌 연결 확인 (장치 버전 읽기 1회)</button>
-    <div class="hint">상태 확인은 클라이언트 경로·COM 포트를 찾습니다. 연결 확인은 장치 버전을 한 번 읽습니다.
-      경로나 포트를 못 찾으면 <code>amsrfid.toml</code>의 <code>pm3_path</code>와 <code>port</code>를 지정하세요.
-      드라이버 설치·펌웨어 변경은 실행하지 않습니다.</div>
-  </div>
-
-  <div class="card">
-    <h2>원터치 읽기</h2>
-    <button class="btn primary" id="btnAuto">🔓 꽂고 올린 카드 읽어서 .bin 저장</button>
-    <div class="hint">Proxmark3 를 USB 에 꽂고(아무것도 안 떠 있어도 됨) 버튼을 누른 뒤,
-      안내가 나오면 카드를 안테나 위에 올리세요. 장치 탐지 → 카드 탐지 → 종류 확인 →
-      키 복구 → 저장까지 저절로 진행됩니다.</div>
-    <div class="result" id="result"></div>
-  </div>
-
-  <div class="card">
-    <h2>진행 상황</h2>
-    <div class="log" id="log"></div>
-  </div>
-
-  <div class="card">
-    <div class="row" style="margin-bottom:10px">
-      <h2 style="margin:0">저장된 덤프 (.bin)</h2>
-      <div class="spacer"></div>
-      <button class="btn sm" id="btnImport">📂 불러오기</button>
-      <input type="file" id="fileInput" accept=".bin" style="display:none">
-      <button class="btn sm" id="btnDiag">🩺 진단</button>
-      <button class="btn sm" id="btnRefresh">새로고침</button>
-      <button class="btn sm" id="btnUpdate">업데이트 확인</button>
-    </div>
-    <div class="dumps" id="dumps"><div class="empty">불러오는 중…</div></div>
-    <pre class="log" id="analysis" style="display:none;margin-top:10px"></pre>
-    <div class="hint">덤프 이름을 누르면 <b>조회</b>(블록0·키·값·복제가능)합니다.
-      이미 만들어 둔 .bin 은 「불러오기」로 열면 됩니다.
-      복제는 대상 카드를 올린 상태에서 누르세요 — 매직카드는 UID 까지, 일반/정품은 키가 맞는 블록을 되씁니다.</div>
-  </div>
-
-  <footer>127.0.0.1 로컬 전용 · 이 창을 닫으면 UI 가 꺼집니다</footer>
-</div>
-
+<body><main>
+<header><div><h1>ams-rfid</h1><small>Proxmark3 Easy · <span id="version">버전 확인 중</span></small></div><span class="badge" id="clientState">준비 전</span></header>
+<section>
+<h2>원본 카드에서 대상 카드까지</h2>
+<p>Easy를 USB에 연결하고 원본 카드를 올려 주세요. 필요한 pm3 클라이언트는 처음 한 번 자동으로 준비합니다.</p>
+<ol class="steps" id="steps"><li>① 준비·연결</li><li>② 원본 읽기</li><li>③ 카드 교체</li><li>④ 쓰기</li><li>⑤ 검증</li></ol>
+<button class="primary" id="start">원터치 시작 — 자동 준비하고 원본 읽기</button>
+<div class="notice" id="swap" hidden><b>원본 읽기가 끝났습니다. 카드를 교체해 주세요.</b><p id="source"></p><p>원본 카드를 치우고 쓸 대상 카드를 올리세요. 아래 버튼을 누르면 대상 카드 내용을 덮어씁니다.</p><button class="primary" id="write">교체 완료·쓰기 시작</button></div>
+<p class="muted"><small>본인 소유 또는 점검 권한이 있는 카드에 사용하세요. 쓰기는 대상 카드 내용을 덮어씁니다.</small></p>
+</section>
+<section id="activity" aria-live="polite">
+<div><span id="indicator"></span><span id="phase">대기 중</span></div>
+<p id="instruction">위 버튼을 누르면 시작합니다. pm3를 미리 설치할 필요가 없습니다.</p>
+<small id="elapsed">경과 0초</small><p id="result"></p>
+<details open><summary>실시간 실행 로그</summary><pre id="log" aria-live="off">아직 실행한 작업이 없습니다.</pre></details>
+</section>
+<section>
+<h2>저장된 덤프</h2><p class="muted">이미 읽은 파일은 목록의 쓰기 버튼으로 대상 카드에 쓸 수 있습니다.</p>
+<div class="actions"><button id="refresh">목록 새로고침</button><button id="import">.bin 불러오기</button><input type="file" id="file" accept=".bin" hidden></div>
+<div id="dumps"></div><pre id="analysis" hidden></pre>
+</section>
+<section><details><summary>연결 점검·업데이트</summary><p class="muted">카드 읽기 전에 연결만 확인하려면 ‘자동 준비·연결 확인’을 누르세요.</p><div class="actions"><button id="connect">자동 준비·연결 확인</button><button id="diag">진단 정보</button><button id="update">업데이트</button></div><p class="muted">실행 로그는 out/last-pm3.log에도 저장됩니다. 장치 펌웨어는 자동으로 변경하지 않습니다.</p></details></section>
+<footer><p class="muted"><small>로컬 실행 · 실행한 콘솔 창을 닫으면 서버가 종료됩니다.</small></p></footer>
+</main>
 <script>
 (function(){
-  "use strict";
-  var busy = false, since = 0, poll = null;
-  var $ = function(id){ return document.getElementById(id); };
-
-  function setBusy(b){
-    busy = b;
-    ["btnSetup","btnConnect","btnDiag","btnAuto","btnRefresh","btnUpdate"].forEach(function(id){ $(id).disabled = b; });
-    document.querySelectorAll(".btnClone").forEach(function(el){ el.disabled = b; });
-  }
-  function human(n){
-    if(n < 1024) return n + " B";
-    if(n < 1048576) return (n/1024).toFixed(0) + " KB";
-    return (n/1048576).toFixed(1) + " MB";
-  }
-  function appendLog(lines){
-    if(!lines || !lines.length) return;
-    var el = $("log");
-    el.textContent += (el.textContent ? "\n" : "") + lines.join("\n");
-    el.scrollTop = el.scrollHeight;
-  }
-  function clearLog(){ $("log").textContent = ""; since = 0; }
-  function showResult(kind, html){
-    var r = $("result");
-    r.className = "result show " + kind;
-    r.innerHTML = html;
-  }
-  function hideResult(){ $("result").className = "result"; }
-
-  function api(method, path, body){
-    return fetch(path, {
-      method: method,
-      headers: body ? {"Content-Type":"application/json"} : undefined,
-      body: body ? JSON.stringify(body) : undefined
-    }).then(function(r){ return r.json(); });
-  }
-
-  function loadStatus(){
-    api("GET","/api/status").then(function(s){
-      $("ver").textContent = "v" + (s.version || "?");
-      var ok = !!s.pm3;
-      // 칩 상태: 포트까지 잡히면 준비됨, 장치만 보이면 드라이버 필요, 아무것도 없으면 없음
-      var good = ok && !!s.port;
-      $("pm3dot").className = "dot " + (good ? "ok" : (s.device_present ? "" : "no"));
-      var label;
-      if (s.connected) label = "최근 연결 확인됨 · " + s.port;
-      else if (ok && s.port) label = "포트 지정됨 · " + s.port;
-      else if (s.needs_driver) label = "드라이버 필요";
-      else if (s.device_present) label = "장치 감지됨";
-      else if (!ok) label = "pm3 없음";
-      else label = s.device_checked ? "장치 포트 없음" : "상태 확인 필요";
-      $("pm3txt").textContent = label;
-      $("pm3txt").title = ok ? (s.pm3 + (s.port ? "  @" + s.port : "")) : (s.pm3_error || "");
-      // 드라이버 필요 배너
-      var db = $("driverBanner");
-      if (s.needs_driver) {
-        db.style.display = "flex";
-        $("driverMsg").textContent = "Proxmark3" + (s.device_name ? " (" + s.device_name + ")" : "") +
-          " 장치는 보이는데 드라이버가 없어 COM 포트가 안 잡힙니다.";
-      } else {
-        db.style.display = "none";
-      }
-    }).catch(function(){
-      $("pm3dot").className = "dot no"; $("pm3txt").textContent = "서버 응답 없음";
-    });
-  }
-
-  function loadDumps(){
-    api("GET","/api/dumps").then(function(list){
-      var box = $("dumps");
-      if(!list.length){ box.innerHTML = '<div class="empty">아직 저장된 덤프가 없습니다. 위에서 원터치로 떠 보세요.</div>'; return; }
-      box.innerHTML = "";
-      list.forEach(function(d){
-        var row = document.createElement("div"); row.className = "dump";
-        var name = document.createElement("div"); name.className = "name"; name.textContent = d.name;
-        name.style.cursor = "pointer"; name.title = "눌러서 조회";
-        name.onclick = function(){ analyzeDump(d.name); };
-        var size = document.createElement("div"); size.className = "size"; size.textContent = human(d.size);
-        var view = document.createElement("button"); view.className = "btn sm"; view.textContent = "조회";
-        view.onclick = function(){ analyzeDump(d.name); };
-        var btn = document.createElement("button"); btn.className = "btn sm btnClone"; btn.textContent = "복제";
-        btn.disabled = busy;
-        btn.onclick = function(){ cloneDump(d.name); };
-        row.appendChild(name); row.appendChild(size); row.appendChild(view); row.appendChild(btn);
-        box.appendChild(row);
-      });
-    });
-  }
-
-  function startPolling(onDone){
-    if(poll) clearInterval(poll);
-    poll = setInterval(function(){
-      api("GET","/api/job?since=" + since).then(function(j){
-        if(j.idle){ return; }
-        appendLog(j.lines);
-        if(typeof j.total === "number") since = j.total;
-        if(!j.running){
-          clearInterval(poll); poll = null; setBusy(false);
-          onDone(j);
-        }
-      }).catch(function(){ /* 잠깐의 실패는 다음 폴링에서 회복 */ });
-    }, 700);
-  }
-
-  function run(kind, start){
-    if(busy) return;
-    hideResult(); clearLog(); setBusy(true);
-    start().then(function(res){
-      if(res && res.ok === false){
-        setBusy(false);
-        showResult("err", "시작하지 못했습니다: " + (res.error || ""));
-        return;
-      }
-      startPolling(function(j){
-        loadDumps(); loadStatus();
-        if(j.ok){
-          if(kind === "auto" && j.result && j.result.bin){
-            showResult("ok", "✅ 저장 완료 — <b>" + j.result.bin + "</b>" +
-              (j.result.uid ? " (UID " + j.result.uid + ")" : ""));
-          } else if(kind === "clone" && j.result && j.result.wrote){
-            showResult("ok", "✅ 복제 완료 — <b>" + j.result.wrote + "</b> 를 대상 카드에 썼습니다.");
-          } else {
-            showResult("ok", "✅ 완료되었습니다.");
-          }
-        } else {
-          showResult("err", "⚠️ " + (j.error || "작업에 실패했습니다.").replace(/\n/g," "));
-        }
-      });
-    }).catch(function(){ setBusy(false); showResult("err","서버에 연결하지 못했습니다."); });
-  }
-
-  function cloneDump(name){
-    if(busy) return;
-    if(!confirm("대상 카드의 내용을 덮어씁니다.\n본인 소유/권한이 있는 카드인지 확인하셨나요?\n\n복제할 파일: " + name)) return;
-    run("clone", function(){ return api("POST","/api/clone",{name:name}); });
-  }
-
-  function analyzeDump(name){
-    var box = $("analysis");
-    box.style.display = "block";
-    box.textContent = "조회 중… (" + name + ")";
-    api("GET","/api/analyze?name=" + encodeURIComponent(name)).then(function(a){
-      if(a && a.ok){ box.textContent = a.report || "(내용 없음)"; }
-      else { box.textContent = "읽지 못했습니다: " + ((a && a.error) || ""); }
-    }).catch(function(){ box.textContent = "조회 실패(서버 응답 없음)"; });
-  }
-
-  function importFile(file){
-    if(!file) return;
-    var reader = new FileReader();
-    reader.onload = function(){
-      fetch("/api/import?name=" + encodeURIComponent(file.name), {
-        method:"POST",
-        headers:{"Content-Type":"application/octet-stream"},
-        body: reader.result
-      }).then(function(r){ return r.json(); }).then(function(res){
-        if(res && res.ok){
-          loadDumps();
-          analyzeDump(res.name);
-        } else {
-          var box = $("analysis"); box.style.display="block";
-          box.textContent = "불러오기 실패: " + ((res && res.error) || "");
-        }
-      }).catch(function(){
-        var box = $("analysis"); box.style.display="block";
-        box.textContent = "불러오기 실패(서버 응답 없음)";
-      });
-    };
-    reader.readAsArrayBuffer(file);
-  }
-
-  $("btnSetup").onclick = function(){ run("setup", function(){ return api("POST","/api/setup"); }); };
-  $("btnConnect").onclick = function(){ run("connect", function(){ return api("POST","/api/connect"); }); };
-  $("btnAuto").onclick = function(){ run("auto", function(){ return api("POST","/api/auto"); }); };
-  $("btnUpdate").onclick = function(){ run("update", function(){ return api("POST","/api/update"); }); };
-  $("btnRefresh").onclick = loadDumps;
-  $("btnImport").onclick = function(){ $("fileInput").click(); };
-  $("fileInput").onchange = function(e){ importFile(e.target.files[0]); e.target.value = ""; };
-  $("btnDiag").onclick = function(){
-    var box = $("analysis"); box.style.display = "block"; box.textContent = "진단 중…";
-    api("GET","/api/diag").then(function(d){
-      var L = [];
-      L.push("=== 진단 ===");
-      L.push("OS: " + d.os + " · PowerShell: " + d.powershell + " · pyserial: " + d.pyserial);
-      L.push("클라이언트: " + (d.client || "못 찾음"));
-      var dev = d.device || {};
-      L.push("장치: present=" + dev.present + " com=" + dev.com + " needs_driver=" + dev.needs_driver + " name=" + (dev.name||""));
-      L.push("");
-      L.push("pyserial 포트 " + (d.serial_ports||[]).length + "개:");
-      (d.serial_ports||[]).forEach(function(p){
-        L.push("  " + p.device + "  vid=" + (p.vid?("0x"+p.vid.toString(16)):"-") + " pid=" + (p.pid?("0x"+p.pid.toString(16)):"-") + "  " + (p.desc||""));
-      });
-      var pm3 = d.pm3_devices||[];
-      if(pm3.length){
-        L.push("");
-        L.push("PM3 로 보이는 PnP 장치 " + pm3.length + "개:");
-        pm3.forEach(function(p){ L.push("  " + p.name + "  errcode=" + p.errcode + "  [" + p.pnpid + "]"); });
-      }
-      if(d.hint){ L.push(""); L.push("→ " + d.hint); }
-      box.textContent = L.join("\n");
-    }).catch(function(){ box.textContent = "진단 실패(서버 응답 없음)"; });
-  };
-  $("btnDriver").onclick = function(){
-    var btn = $("btnDriver"); btn.disabled = true; btn.textContent = "안내 불러오는 중…";
-    api("POST","/api/driver").then(function(res){
-      btn.disabled = false; btn.textContent = "드라이버 안내";
-      var box = $("analysis"); box.style.display="block";
-      box.textContent = (res && res.message) || "완료";
-      loadStatus();
-    }).catch(function(){
-      btn.disabled = false; btn.textContent = "드라이버 안내";
-    });
-  };
-
-  loadStatus(); loadDumps();
-  // 상태 폴링은 드물게, 그리고 작업(읽기/복제/설정) 중에는 쉰다 — 장치를 계속 들쑤시지 않게.
-  setInterval(function(){ if(!busy) loadStatus(); }, 15000);
+"use strict";
+var $=function(id){return document.getElementById(id);},busy=false,since=0,polling=false,lastJob=null,pending=null,generation=0;
+var phases={preparing:[0,"준비·연결 중","클라이언트 설치와 장치 연결을 확인하고 있습니다."],reading:[1,"원본 카드 읽는 중","원본 카드를 안테나 위에 그대로 두세요."],recovering:[1,"원본 키·데이터 복구 중","수 분에서 수십 분 걸릴 수 있습니다. 아래 실시간 로그를 확인하세요."],awaiting_target:[2,"카드 교체 대기","원본 카드를 치우고 대상 카드를 올려 주세요."],writing:[3,"대상 카드에 쓰는 중","카드와 USB 케이블을 움직이지 마세요."],verifying:[4,"되읽어 검증하는 중","쓴 내용을 다시 읽어 원본과 비교하고 있습니다."],complete:[4,"작업 완료","아래 결과를 확인하세요."],failed:[-1,"작업 중단","아래 오류와 실행 로그를 확인하세요. 자동으로 재실행하지 않습니다."]};
+function api(path,body){return fetch(path,{method:body===undefined?"GET":"POST",headers:body===undefined?{}:{"Content-Type":"application/json"},body:body===undefined?undefined:JSON.stringify(body)}).then(function(r){if(!r.ok)throw new Error("서버 오류 "+r.status);return r.json();});}
+function lock(value){busy=value;["start","write","connect","diag","update","import"].forEach(function(id){$(id).disabled=value;});document.querySelectorAll(".writeDump").forEach(function(b){b.disabled=value;});}
+function error(message){$("result").textContent=message;$("result").className="error";}
+function showPending(p){pending=p;$("swap").hidden=!p;$("source").textContent=p?("원본 UID "+p.uid+" · "+p.name):"";}
+function status(){return api("/api/status").then(function(s){$("version").textContent="v"+s.version;$("clientState").textContent=s.pm3?"클라이언트 준비됨":"첫 실행 시 자동 설치";showPending(s.pending_write);});}
+function display(j){
+ var p=phases[j.phase]||phases.preparing;
+ $("phase").textContent=p[1];$("instruction").textContent=p[2];$("elapsed").textContent="경과 "+j.elapsed+"초";
+ $("activity").className=j.running?"running":(j.error?"failed":"");
+ Array.prototype.forEach.call($("steps").children,function(el,i){el.className=i===p[0]?"active":(i<p[0]?"done":"");});
+ if(j.lines&&j.lines.length){if(since===0)$("log").textContent="";$("log").textContent+=j.lines.join("\n")+"\n";$("log").scrollTop=$("log").scrollHeight;}
+ since=j.total||0;lock(j.running);
+ if(!j.running){
+  if(j.error)error(j.error);
+  else if(j.result&&j.result.verified){$("result").textContent="쓰기·검증 완료: "+j.result.wrote+" (데이터 블록 비교 완료)";}
+  else if(j.phase==="awaiting_target")$("result").textContent="원본 저장 완료. 위 카드 교체 안내를 따라 주세요.";
+  else if(j.kind==="connect")$("result").textContent="장치 연결 확인 완료";
+  else $("result").textContent="작업이 완료되었습니다.";
+ }
+}
+function poll(){if(polling)return;polling=true;var requestGeneration=generation;api("/api/job?since="+since).then(function(j){
+ if(requestGeneration!==generation)return;
+ if(!j.idle){display(j);if(!j.running&&(!lastJob||lastJob.running)){status();if(lastJob===null||lastJob.running)dumps();}lastJob=j;}
+}).catch(function(){error("서버 응답이 없습니다. 실행한 콘솔 창이 열려 있는지 확인하세요. 쓰기 작업을 다시 시작하지 마세요.");}).finally(function(){polling=false;});}
+function start(path,body){if(busy)return;generation++;lock(true);since=0;lastJob=null;$("log").textContent="작업 시작 요청 중…\n";$("result").textContent="";$("result").className="";api(path,body||{}).then(function(r){if(r.ok===false){lock(false);error(r.error);return;}poll();}).catch(function(e){lock(false);error(e.message);});}
+function dumps(){api("/api/dumps").then(function(rows){$("dumps").replaceChildren();if(!rows.length){$("dumps").textContent="저장된 파일이 없습니다.";return;}rows.forEach(function(d){var row=document.createElement("div"),name=document.createElement("span"),view=document.createElement("button"),write=document.createElement("button");row.className="dump";name.textContent=d.name;view.textContent="조회";view.onclick=function(){api("/api/analyze?name="+encodeURIComponent(d.name)).then(function(a){$("analysis").hidden=false;$("analysis").textContent=a.report||a.error;});};write.textContent="대상 카드에 쓰기";write.className="writeDump";write.disabled=busy;write.onclick=function(){if(confirm("대상 카드를 올렸나요? 대상 카드 내용을 덮어씁니다.\n파일: "+d.name))start("/api/clone",{name:d.name});};row.append(name,view,write);$("dumps").append(row);});}).catch(function(e){error(e.message);});}
+$("start").onclick=function(){showPending(null);start("/api/wizard/start");};
+$("write").onclick=function(){start("/api/wizard/write",{confirmed:true});};
+$("connect").onclick=function(){start("/api/connect");};$("update").onclick=function(){start("/api/update");};$("refresh").onclick=dumps;
+$("diag").onclick=function(){if(busy)return;lock(true);api("/api/diag").then(function(d){$("analysis").hidden=false;$("analysis").textContent=JSON.stringify(d,null,2);}).catch(function(e){error(e.message);}).finally(function(){lock(false);});};
+$("import").onclick=function(){$("file").click();};$("file").onchange=function(){var file=this.files[0];if(!file)return;fetch("/api/import?name="+encodeURIComponent(file.name),{method:"POST",body:file}).then(function(r){return r.json();}).then(function(r){if(!r.ok)error(r.error);else dumps();}).catch(function(e){error(e.message);});this.value="";};
+status().catch(function(e){error(e.message);});dumps();poll();setInterval(poll,800);
 })();
-</script>
-</body>
-</html>
+</script></body></html>

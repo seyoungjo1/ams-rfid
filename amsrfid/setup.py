@@ -42,9 +42,28 @@ def ensure_client(cfg: Config, echo: Echo = print, deep: bool = False) -> str | 
             echo("  → 찾음: %s  (pm3_path.txt 에 저장)" % found)
             return found
     echo("· Proxmark3 클라이언트(proxmark3.exe)를 찾지 못했습니다.")
-    echo("  ProxSpace 또는 https://www.proxmarkbuilds.org 로 설치한 뒤,")
-    echo("  이 폴더의 pm3_path.txt 에 proxmark3.exe 경로를 한 줄 적어 주세요.")
+    echo("  원터치 시작/연결 확인에서 Easy용 클라이언트를 자동 준비합니다.")
     return None
+
+
+def prepare_device(cfg: Config, echo: Echo = print) -> P.Pm3:
+    """User-started preparation: install missing client, find port, verify version."""
+    from . import runtime, workflow
+    client = runtime.installed_client(cfg.root) if not cfg.pm3_path else None
+    if not client:
+        client = ensure_client(cfg, echo, deep=False)
+    if not client:
+        client = runtime.install(cfg.root, echo)
+    cfg.pm3_path = client
+    pm3 = P.Pm3(client=client, port=cfg.port or None, workdir=cfg.out_path, echo=echo)
+    workflow.wait_for_device(pm3, cfg, echo)
+    version = pm3.run("hw version", timeout=30).text
+    if not re.search(r"(?:\bos:|\bOS\.+)\s*\S", version, re.I):
+        raise P.Pm3Error("장치의 펌웨어 응답을 확인하지 못했습니다. 연결 로그를 확인하세요.")
+    if "does not match" in version.lower() or "mismatch" in version.lower():
+        raise P.Pm3Error("클라이언트와 장치 펌웨어 버전이 다릅니다. 카드 작업을 중단했습니다. Easy의 메모리 용량에 맞는 펌웨어 준비가 필요합니다.")
+    echo("연결 완료 · " + str(pm3.port))
+    return pm3
 
 
 def flash_if_needed(cfg: Config, client: str, echo: Echo = print, force: bool = False) -> bool:
@@ -100,16 +119,6 @@ def bootstrap(cfg: Config, echo: Echo = print, do_flash: bool | None = None) -> 
 
 
 def check_connection(cfg: Config, echo: Echo = print) -> dict:
-    """Explicit one-shot connection test; read only hardware version, no RF commands."""
-    result = bootstrap(cfg, echo)
-    if not result["ready"]:
-        raise P.Pm3Error("클라이언트 경로와 COM 포트를 먼저 확인하세요.")
-    pm3 = P.Pm3(client=result["client"], port=result["port"], workdir=cfg.out_path)
-    echo("· 연결 확인: hw version (1회)")
-    version = pm3.run("hw version", timeout=30).text
-    echo(version)
-    if not re.search(r"\bos:\s*\S", version, re.I):
-        raise P.Pm3Error("장치 OS 버전 응답을 확인하지 못했습니다. out/last-pm3.log 를 확인하세요.")
-    result["connected"] = True
-    echo("=== Proxmark3 연결 확인 완료 ===")
-    return result
+    pm3 = prepare_device(cfg, echo)
+    return {"client": pm3.client, "port": pm3.port, "connected": True,
+            "ready": True, "device_present": True, "flashed": False}

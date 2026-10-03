@@ -17,7 +17,7 @@ from typing import Any, Callable
 
 from . import dump as D
 from .config import Config
-from .pm3 import Pm3, Pm3Error, DeviceNotFound
+from .pm3 import Pm3, Pm3Error, DeviceNotFound, quoted_path
 
 Echo = Callable[[str], Any]
 
@@ -128,11 +128,9 @@ def recover_and_dump(
 ) -> OneTouchResult:
     """전 섹터 키를 복구하고 덤프를 저장한다.
 
-    FM11RF08S 는 정적 암호화 nonce 대응 때문에 일반 nested/autopwn 으로는 안 풀린다.
-    Proxmark3 Iceman 의 전용 스크립트 `fm11rf08s_recovery` 를 쓴다. 이 스크립트는
-    백도어 키로 섹터별 nonce 를 모으고(`hf mf isen --collect_fm11rf08s_with_data`),
-    staticnested_2x1nt_rf08s 솔버로 KeyA/KeyB 를 복구한 뒤 키 파일·덤프를 떨군다.
-    일반 MIFARE Classic 은 기존대로 autopwn 을 쓴다.
+    FM11RF08S 는 배포 클라이언트의 native `hf mf sen` 을 사용한다.
+    별도 Python 복구 스크립트나 외부 솔버를 설치할 필요가 없다.
+    일반 MIFARE Classic 은 autopwn 을 사용한다.
     """
     out = cfg.out_path
     out.mkdir(parents=True, exist_ok=True)
@@ -147,11 +145,11 @@ def recover_and_dump(
 
     started = time.time()
     if info.is_fm11rf08s:
-        echo("FM11RF08S — 전용 복구 스크립트로 키를 복구합니다 (백도어 %s, static nested)."
+        echo("FM11RF08S — 내장 SEN 명령으로 키를 복구합니다 (백도어 %s, static nested)."
              % D.FM11RF08S_BACKDOOR)
         echo("  카드를 안테나 위에 그대로 두세요. 수 분 걸릴 수 있습니다…")
-        # -x: 먼저 기본키 확인(fchk)  -y: 끝에 찾은 키로 재확인하며 덤프 저장
-        pm3.run("script run fm11rf08s_recovery -x -y", timeout=cfg.timeout)
+        # The portable build has native SEN support; no embedded Python/scripts needed.
+        pm3.run("hf mf sen --no-oob", timeout=max(cfg.timeout, 1800))
     else:
         echo("일반 MIFARE Classic — autopwn 으로 키를 복구합니다. 수 분 걸릴 수 있습니다…")
         pm3.run("hf mf autopwn", timeout=cfg.timeout)
@@ -167,6 +165,9 @@ def recover_and_dump(
 
     result = OneTouchResult(info=info)
     if binp and binp.is_file():
+        recovered_dump = D.Dump.load(binp)
+        if len(recovered_dump.data) != D.SIZE_1K or recovered_dump.uid != info.uid:
+            raise WorkflowError("읽은 덤프의 크기 또는 UID 가 원본 카드와 다릅니다.")
         stamp = datetime.now().strftime("%Y%m%d-%H%M%S")
         tag = info.uid or "card"
         final = out / ("ams-%s-%s.bin" % (tag, stamp))
@@ -183,8 +184,7 @@ def recover_and_dump(
 
     result.note = (
         "키/덤프를 얻지 못했습니다. 카드가 안테나 위에 그대로 있는지, 접촉이 좋은지 확인하세요. "
-        "FM11RF08S 가 맞는데도 실패하면 pm3 셸에서 직접 `script run fm11rf08s_recovery -x -y` 를 "
-        "돌려 메시지를 확인하세요(펌웨어가 최신이어야 백도어 복구가 됩니다)."
+        "FM11RF08S 는 `hf mf sen` 지원 클라이언트가 필요합니다. 진행 로그와 out/last-pm3.log 를 확인하세요."
     )
     echo("  → " + result.note)
     return result
@@ -225,7 +225,8 @@ def _resolve_key_file(key_path, uid: str, out: Path, d: "D.Dump", echo: Echo) ->
 
 
 def clone_to_card(pm3: Pm3, bin_path: str | Path, cfg: Config, echo: Echo = print,
-                  key_path: str | Path | None = None, allow_placeholder: bool = False) -> None:
+                  key_path: str | Path | None = None, allow_placeholder: bool = False,
+                  stage: Callable[[str], Any] | None = None) -> bool:
     """떠 둔 .bin 을 대상 카드에 쓴다(복제). 대상 카드를 덮어쓰므로 조심.
 
     복제의 핵심(백도어 함정)
@@ -237,10 +238,12 @@ def clone_to_card(pm3: Pm3, bin_path: str | Path, cfg: Config, echo: Echo = prin
       · 그 외/일반     → `hf mf restore` : 키 파일로 대상을 인증해 데이터·키를 쓴다(일반 카드는
         블록0=UID 변경 불가).
     """
-    bin_path = Path(bin_path)
+    bin_path = Path(bin_path).resolve()
     if not bin_path.is_file():
         raise WorkflowError("덤프 파일을 찾을 수 없습니다: %s" % bin_path)
     d = D.Dump.load(bin_path)
+    if len(d.data) != D.SIZE_1K:
+        raise WorkflowError("현재 원터치 쓰기는 MIFARE Classic 1K 덤프만 지원합니다.")
     a = d.analyze()
     uid = a["uid"]
 
@@ -258,14 +261,17 @@ def clone_to_card(pm3: Pm3, bin_path: str | Path, cfg: Config, echo: Echo = prin
     info = identify(pm3, echo)
     pm3.workdir = cfg.out_path
 
+    if stage:
+        stage("writing")
+    echo("쓰기 시작 · 대상 카드를 움직이지 마세요")
     if _is_gen1a(info.magic):
         echo("gen1a 매직카드 — cload 로 블록0(UID %s·서명)까지 통째로 씁니다." % uid)
-        res = pm3.run('hf mf cload -f "%s"' % bin_path, timeout=cfg.timeout)
+        res = pm3.run('hf mf cload -f %s' % quoted_path(bin_path), timeout=cfg.timeout)
     else:
         kf = _resolve_key_file(key_path, uid, cfg.out_path, d, echo)
-        cmd = 'hf mf restore --1k -f "%s"' % bin_path
+        cmd = 'hf mf restore --1k -f %s' % quoted_path(bin_path)
         if kf:
-            cmd += ' -k "%s"' % kf
+            cmd += ' -k %s' % quoted_path(kf)
         if uid:
             cmd += ' --uid %s' % uid
         if info.magic:
@@ -277,10 +283,14 @@ def clone_to_card(pm3: Pm3, bin_path: str | Path, cfg: Config, echo: Echo = prin
     low = res.text.lower()
     if ("fail" in low or "error" in low or "can't" in low) and "wrote" not in low and "ok" not in low:
         raise WorkflowError("쓰기에 실패했을 수 있습니다. pm3 출력 확인:\n" + res.text[-700:])
-    echo("복제 시도 완료 — %s 를 대상 카드에 썼습니다." % bin_path.name)
-
-    # 되읽어 검증(best-effort). 검증 못 해도 복제를 실패로 치지는 않는다.
-    verify_clone(pm3, d, info, cfg, echo)
+    echo("쓰기 명령 종료 · 되읽기 검증을 시작합니다")
+    if stage:
+        stage("verifying")
+    verified = verify_clone(pm3, d, info, cfg, echo)
+    if verified is not True:
+        raise WorkflowError("쓰기 후 검증에 실패했거나 확인할 수 없습니다. 쓰기 완료로 처리하지 않았습니다.")
+    echo("쓰기·검증 완료 — %s" % bin_path.name)
+    return True
 
 
 def verify_clone(pm3: Pm3, d: "D.Dump", info: D.CardInfo, cfg: Config, echo: Echo = print) -> bool | None:
@@ -290,6 +300,7 @@ def verify_clone(pm3: Pm3, d: "D.Dump", info: D.CardInfo, cfg: Config, echo: Ech
     gen1a 는 블록0(UID·서명)까지, 그 외는 데이터 블록을 비교한다(일반 카드는 블록0 제외).
     """
     out = cfg.out_path
+    out.mkdir(parents=True, exist_ok=True)
     for stale in out.glob("hf-mf-*-dump.bin"):
         try:
             stale.unlink()
@@ -298,7 +309,7 @@ def verify_clone(pm3: Pm3, d: "D.Dump", info: D.CardInfo, cfg: Config, echo: Ech
     echo("되읽어 검증 중…")
     kf = d.write_key_file(out / ("hf-mf-%s-verify-key.bin" % d.uid))
     started = time.time()
-    pm3.run('hf mf dump -k "%s"' % kf, timeout=cfg.timeout)
+    pm3.run('hf mf dump -k %s' % quoted_path(kf), timeout=cfg.timeout)
     back = _newest_match(out, "hf-mf-*-dump.bin", "", started)
     if not back:
         echo("  (되읽기 실패 — 직접 `hf mf dump` 로 확인해 보세요)")
@@ -308,6 +319,8 @@ def verify_clone(pm3: Pm3, d: "D.Dump", info: D.CardInfo, cfg: Config, echo: Ech
     except ValueError:
         return None
 
+    if len(rb.data) != len(d.data):
+        return False
     gen1a = _is_gen1a(info.magic)
     mism = []
     for b in range(min(D.BLOCKS, len(d.data) // D.BLOCK, len(rb.data) // D.BLOCK)):
@@ -316,8 +329,6 @@ def verify_clone(pm3: Pm3, d: "D.Dump", info: D.CardInfo, cfg: Config, echo: Ech
         if D.is_trailer(b):
             continue                     # 트레일러 키는 되읽기로 안 보이므로 비교 제외
         want = d.block(b)
-        if want == b"\x00" * D.BLOCK or want == b"\xff" * D.BLOCK:
-            continue                     # 빈 블록은 검증 의미 없음
         if rb.block(b) != want:
             mism.append(b)
     if mism:
@@ -330,16 +341,16 @@ def verify_clone(pm3: Pm3, d: "D.Dump", info: D.CardInfo, cfg: Config, echo: Ech
 # -- 전체 원터치 ------------------------------------------------------------
 
 
-def one_touch(cfg: Config, echo: Echo = print) -> OneTouchResult:
-    """꽂은 상태에서 호출 — 장치/카드 대기부터 덤프 저장까지 한 번에."""
-    pm3 = Pm3.locate(
-        configured=cfg.pm3_path or None,
-        port=cfg.port or None,
-        workdir=cfg.out_path,
-        deep=False,                     # 자동 전체드라이브 스캔은 안 함(상태확인 버튼에서만)
-    )
-    echo("pm3 클라이언트: %s" % pm3.client)
-    wait_for_device(pm3, cfg, echo)
+def one_touch(cfg: Config, echo: Echo = print,
+              stage: Callable[[str], Any] | None = None) -> OneTouchResult:
+    from .setup import prepare_device
+    if stage:
+        stage("preparing")
+    pm3 = prepare_device(cfg, echo)
+    if stage:
+        stage("reading")
     wait_for_card(pm3, cfg, echo)
     info = identify(pm3, echo)
+    if stage:
+        stage("recovering")
     return recover_and_dump(pm3, info, cfg, echo)

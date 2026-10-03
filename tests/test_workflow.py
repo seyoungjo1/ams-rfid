@@ -37,7 +37,7 @@ def test_recover_and_dump_failure_gives_note(tmp_path):
     info = workflow.identify(pm3, echo=lambda *_: None)
     res = workflow.recover_and_dump(pm3, info, cfg, echo=lambda *_: None)
     assert res.recovered is False
-    assert "fm11rf08s_recovery" in res.note
+    assert "hf mf sen" in res.note
 
 
 def test_clone_guard_blocks_placeholder_dump(tmp_path):
@@ -67,3 +67,27 @@ def test_clone_to_card_writes(tmp_path):
     # 복제(쓰기) — cload 명령이 불려야 한다
     workflow.clone_to_card(pm3, res.bin_path, cfg, echo=lambda *_: None)
     assert any("cload" in c for c in pm3.commands)
+
+
+def test_write_verification_failure_is_not_success(tmp_path, monkeypatch):
+    import pytest
+    cfg = _cfg(tmp_path)
+    pm3 = FakePm3(workdir=cfg.out_path, magic="Gen 1a")
+    result = workflow.recover_and_dump(pm3, workflow.identify(pm3), cfg, echo=lambda *a: None)
+    monkeypatch.setattr(workflow, "verify_clone", lambda *a: False)
+    with pytest.raises(workflow.WorkflowError, match="검증"):
+        workflow.clone_to_card(pm3, result.bin_path, cfg, echo=lambda *a: None)
+
+
+def test_verify_checks_blank_data_blocks(tmp_path):
+    from amsrfid import dump as D
+    cfg = _cfg(tmp_path)
+    pm3 = FakePm3(workdir=cfg.out_path, magic="Gen 1a")
+    want = D.Dump(pm3._dump_bytes())
+    original = pm3._dump_bytes
+    def wrong():
+        data = bytearray(original())
+        data[16] = 1  # An originally empty data block did not get cleared.
+        return bytes(data)
+    pm3._dump_bytes = wrong
+    assert workflow.verify_clone(pm3, want, workflow.identify(pm3), cfg, echo=lambda *a: None) is False

@@ -63,7 +63,7 @@ def test_e2e_clone_and_verify(tmp_path):
     logs = []
     workflow.clone_to_card(pm3, res.bin_path, cfg, echo=lambda m: logs.append(str(m)))
     joined = "\n".join(logs)
-    assert "복제 시도 완료" in joined
+    assert "쓰기·검증 완료" in joined
     # 되읽기 검증이 돌아 결과를 남겼는지(일치/불일치/불가 중 하나)
     assert any(k in joined for k in ("검증 OK", "불일치", "되읽기 실패"))
 

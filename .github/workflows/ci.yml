@@ -25,7 +25,7 @@ jobs:
           python-version: ${{ matrix.python }}
 
       - name: Install deps
-        run: python -m pip install --quiet pytest pyserial
+        run: python -m pip install --quiet pytest -r requirements.txt
 
       # 널 바이트/인코딩/컴파일 가드 — 사용자 PC 를 죽였던 'source code string cannot
       # contain null bytes' 류의 손상을 커밋 단계에서 잡는다.
@@ -39,3 +39,7 @@ jobs:
       # 유닛 + (ubuntu 에선) 가상 스텁 기반 end-to-end 테스트.
       - name: Pytest
         run: python -m pytest -q
+
+      - name: Real portable Windows client (offline only)
+        if: runner.os == 'Windows'
+        run: python tools/check_runtime.py

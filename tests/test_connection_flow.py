@@ -84,3 +84,80 @@ def test_menu_read_action_has_workflow_binding(connected_config, monkeypatch):
     monkeypatch.setattr("builtins.input", lambda *a: next(choices))
     assert menu.run(connected_config) == 0
     assert list(connected_config.out_path.glob("ams-DEADBEEF-*.bin"))
+
+
+def wait_job(app):
+    deadline = time.monotonic() + 10
+    while app.job and app.job.running:
+        assert time.monotonic() < deadline
+        time.sleep(0.01)
+    return app.job_snapshot(0)
+
+
+def test_wizard_waits_for_swap_then_writes(connected_config):
+    app = web.App(connected_config)
+    assert app.write_pending(True)["ok"] is False
+    assert app.start_wizard()["ok"]
+    read = wait_job(app)
+    assert read["ok"], read
+    assert read["phase"] == "awaiting_target"
+    assert app.pending_write
+    assert not any(line.startswith("▶") and "cload" in line for line in read["lines"])
+    assert not app.write_pending(False)["ok"]
+    assert app.write_pending(True)["ok"]
+    write = wait_job(app)
+    assert write["ok"], write
+    assert write["result"]["verified"] is True
+    assert app.pending_write is None
+    assert app.write_pending(True)["ok"] is False
+
+
+def test_wizard_rejects_changed_source(connected_config):
+    app = web.App(connected_config)
+    app.start_wizard()
+    assert wait_job(app)["ok"]
+    (connected_config.out_path / app.pending_write["name"]).write_bytes(b"changed")
+    app.write_pending(True)
+    result = wait_job(app)
+    assert not result["ok"]
+    assert "변경" in result["error"]
+
+
+def test_pm3_streams_before_process_exit(tmp_path):
+    from threading import Event
+    seen = Event()
+    finished = tmp_path / "finished"
+    def log(line):
+        if "first-line" == line:
+            assert not finished.exists()
+            seen.set()
+    pm3 = Pm3(client=sys.executable, workdir=tmp_path, echo=log)
+    script = "import time,pathlib; print('first-line',flush=True); time.sleep(.3); pathlib.Path('finished').touch()"
+    result = pm3._run_subprocess([sys.executable, "-u", "-c", script], 5)
+    assert result.returncode == 0 and seen.is_set()
+    assert finished.exists()
+
+
+def test_pm3_timeout_keeps_partial_output(tmp_path):
+    pm3 = Pm3(client=sys.executable, workdir=tmp_path)
+    script = "import time; print('still-working',flush=True); time.sleep(10)"
+    with pytest.raises(Pm3Error, match="시간 제한"):
+        pm3._run_subprocess([sys.executable, "-u", "-c", script], 0.5)
+    assert "still-working" in (tmp_path / "last-pm3.log").read_text(encoding="utf-8")
+
+
+def test_missing_pm3_is_installed_before_read(connected_config, monkeypatch):
+    from amsrfid import setup, runtime
+    cfg = connected_config
+    stub = cfg.pm3_path
+    cfg.pm3_path = ""
+    installed = []
+    monkeypatch.setattr(setup, "ensure_client", lambda *a, **k: None)
+    monkeypatch.setattr(runtime, "installed_client", lambda *a: None)
+    def install(root, echo):
+        installed.append(root)
+        return stub
+    monkeypatch.setattr(runtime, "install", install)
+    result = workflow.one_touch(cfg, echo=lambda *a: None)
+    assert result.recovered and installed == [cfg.root]
+    assert cfg.pm3_path == stub

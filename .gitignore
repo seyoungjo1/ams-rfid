@@ -17,3 +17,6 @@ __pycache__/
 *.bin
 *.eml
 out/*.json
+
+.runtime/
+pm3_path.txt

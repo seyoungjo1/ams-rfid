@@ -19,6 +19,7 @@ from pathlib import Path
 from . import __version__, update, workflow
 from .config import Config, ConfigError
 from .pm3 import Pm3, Pm3Error
+from .setup import prepare_device
 
 
 def build_parser() -> argparse.ArgumentParser:
@@ -78,8 +79,7 @@ def cmd_auto(cfg: Config) -> int:
 
 def cmd_clone(cfg: Config, src: str | None, key: str | None = None,
               force_placeholder: bool = False) -> int:
-    pm3 = Pm3.locate(cfg.pm3_path or None, cfg.port or None, cfg.out_path, deep=False)
-    workflow.wait_for_device(pm3, cfg, print)
+    pm3 = prepare_device(cfg, print)
     if src is None:
         workflow.wait_for_card(pm3, cfg, print)
         info = workflow.identify(pm3, print)
@@ -175,8 +175,7 @@ def cmd_import(cfg: Config, file: str) -> int:
 
 
 def cmd_info(cfg: Config) -> int:
-    pm3 = Pm3.locate(cfg.pm3_path or None, cfg.port or None, cfg.out_path, deep=False)
-    workflow.wait_for_device(pm3, cfg, print)
+    pm3 = prepare_device(cfg, print)
     workflow.wait_for_card(pm3, cfg, print)
     info = workflow.identify(pm3, print)
     print(info.summary)

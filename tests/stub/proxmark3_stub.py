@@ -53,7 +53,7 @@ def main():
         out.append("[=] --- Fudan FM11RF08S\n[+] Backdoor coms supported: present (key A396EFA4E24F)\n[+] Magic capabilities... Gen 1a")
     if "isen" in joined and "--help" in joined:
         out.append("--collect_fm11rf08s_with_data   collect nonces with data")
-    if "fm11rf08s_recovery" in joined or "hf mf autopwn" in joined:
+    if "hf mf sen" in joined or "hf mf autopwn" in joined:
         _write_dump()
         out.append("[+] found all keys\n[+] Saved to hf-mf-%s-dump.bin\nHave a nice day!" % UID)
     if "hf mf dump" in joined:

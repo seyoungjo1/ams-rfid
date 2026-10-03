@@ -3,3 +3,6 @@
 pyserial>=3.5
 # 3.10 이하에서 amsrfid.toml 설정을 읽으려면 tomli 가 있으면 좋습니다(없어도 기본값으로 동작).
 tomli; python_version < "3.11"
+
+# Portable Windows client archive extraction
+py7zr>=1.0,<2; python_version >= "3.10"

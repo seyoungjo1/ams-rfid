@@ -12,6 +12,8 @@
 from __future__ import annotations
 
 import json
+import time
+import hashlib
 import threading
 import webbrowser
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
@@ -31,12 +33,19 @@ class Job:
 
     def __init__(self, kind: str):
         self.kind = kind
+        self.phase = "preparing"
+        self.started_at = time.monotonic()
+        self.finished_at = None
         self.lines: list[str] = []
         self.running = True
         self.ok = False
         self.error = ""
         self.result: dict[str, Any] = {}
         self._lock = threading.Lock()
+
+    def set_stage(self, phase: str) -> None:
+        with self._lock:
+            self.phase = phase
 
     def log(self, msg: str) -> None:
         with self._lock:
@@ -47,6 +56,8 @@ class Job:
         with self._lock:
             return {
                 "kind": self.kind,
+                "phase": self.phase,
+                "elapsed": int((self.finished_at or time.monotonic()) - self.started_at),
                 "running": self.running,
                 "ok": self.ok,
                 "error": self.error,
@@ -62,6 +73,7 @@ class App:
     def __init__(self, cfg: Config):
         self.cfg = cfg
         self.job: Job | None = None
+        self.pending_write: dict | None = None
         self._lock = threading.Lock()
 
     # -- 상태/목록 ---------------------------------------------------------
@@ -78,6 +90,7 @@ class App:
         dev = getattr(self, "_dev", {})
         info["device_checked"] = bool(dev)
         info["connected"] = dev.get("connected", False)
+        info["pending_write"] = self.pending_write
         info["port"] = self.cfg.port or dev.get("com")
         info["device_present"] = dev.get("present", False)
         info["needs_driver"] = dev.get("needs_driver", False)
@@ -155,6 +168,11 @@ class App:
             finally:
                 # target 이 job.error 를 세웠으면(예: 복구 실패) 실패로 본다.
                 job.ok = not job.error
+                if job.error:
+                    job.phase = "failed"
+                elif job.phase != "awaiting_target":
+                    job.phase = "complete"
+                job.finished_at = time.monotonic()
                 job.running = False
 
         threading.Thread(target=wrap, daemon=True).start()
@@ -162,7 +180,7 @@ class App:
 
     def start_auto(self) -> dict[str, Any]:
         def target(job: Job) -> None:
-            res = workflow.one_touch(self.cfg, echo=job.log)
+            res = workflow.one_touch(self.cfg, echo=job.log, stage=job.set_stage)
             if res.recovered and res.bin_path:
                 job.result = {"bin": res.bin_path.name, "uid": res.info.uid}
             else:
@@ -177,12 +195,44 @@ class App:
             return {"ok": False, "error": "그 덤프 파일을 찾을 수 없습니다: %s" % name}
 
         def target(job: Job) -> None:
-            pm3 = Pm3.locate(self.cfg.pm3_path or None, self.cfg.port or None, self.cfg.out_path, deep=False)
-            workflow.wait_for_device(pm3, self.cfg, job.log)
-            workflow.clone_to_card(pm3, src, self.cfg, job.log)
-            job.result = {"wrote": name}
+            from .setup import prepare_device
+            pm3 = prepare_device(self.cfg, job.log)
+            workflow.clone_to_card(pm3, src, self.cfg, job.log, stage=job.set_stage)
+            job.result = {"wrote": name, "verified": True}
 
         return self._start("clone", target)
+
+    def start_wizard(self) -> dict[str, Any]:
+        def target(job: Job) -> None:
+            self.pending_write = None
+            res = workflow.one_touch(self.cfg, echo=job.log, stage=job.set_stage)
+            if not res.recovered or not res.bin_path:
+                raise Pm3Error(res.note or "원본 읽기에 실패했습니다.")
+            self.pending_write = {
+                "name": res.bin_path.name, "uid": res.info.uid,
+                "sha256": hashlib.sha256(res.bin_path.read_bytes()).hexdigest(),
+            }
+            job.result = {"bin": res.bin_path.name, "uid": res.info.uid}
+            job.set_stage("awaiting_target")
+            job.log("원본 읽기 완료. 원본 카드를 치우고 대상 카드를 올린 뒤 '교체 완료·쓰기 시작'을 누르세요.")
+        return self._start("wizard", target)
+
+    def write_pending(self, confirmed: bool) -> dict[str, Any]:
+        if not confirmed or not self.pending_write:
+            return {"ok": False, "error": "먼저 원본을 읽고 대상 카드 교체를 확인하세요."}
+        pending = dict(self.pending_write)
+        def target(job: Job) -> None:
+            from .setup import prepare_device
+            if self.pending_write != pending:
+                raise Pm3Error("이미 처리한 쓰기 요청입니다. 저장된 덤프 목록에서 다시 선택하세요.")
+            src = self.cfg.out_path / pending["name"]
+            if hashlib.sha256(src.read_bytes()).hexdigest() != pending["sha256"]:
+                raise Pm3Error("읽은 덤프 파일이 변경되었습니다. 원본을 다시 읽으세요.")
+            self.pending_write = None  # A write is never replayed by refresh/repeated clicks.
+            pm3 = prepare_device(self.cfg, job.log)
+            workflow.clone_to_card(pm3, src, self.cfg, job.log, stage=job.set_stage)
+            job.result = {"wrote": src.name, "verified": True}
+        return self._start("write", target)
 
     def start_update(self) -> dict[str, Any]:
         def target(job: Job) -> None:
@@ -286,6 +336,10 @@ def _make_handler(app: App):
 
         def do_POST(self) -> None:
             path = self.path.split("?", 1)[0]
+            if path == "/api/wizard/start":
+                return self._send_json(app.start_wizard())
+            if path == "/api/wizard/write":
+                return self._send_json(app.write_pending(self._body_json().get("confirmed") is True))
             if path == "/api/auto":
                 return self._send_json(app.start_auto())
             if path == "/api/update":
