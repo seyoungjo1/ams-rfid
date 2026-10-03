@@ -424,27 +424,22 @@ def install_driver(inf: str | Path | None = None) -> tuple[bool, str]:
     스토어에 등록만**(`/add-driver`) 한다 — 살아 있는 장치를 건드리지 않는다. 등록 후 장치를
     뽑았다 다시 꽂으면 Windows 가 알아서 붙인다. Windows 10/11 은 대개 이것도 필요 없다.
     """
-    if os.name != "nt":
-        return (False, "드라이버 설치는 Windows 에서만 필요합니다.")
-    infp = Path(inf) if inf else default_inf()
-    if not infp.is_file():
-        return (False, "드라이버 파일을 찾지 못했습니다: %s" % infp)
-    # /install 없이 등록만. 관리자 권한(UAC)으로 pnputil 을 띄우고 끝날 때까지 기다린다.
-    ps = (
-        "$p = Start-Process pnputil -ArgumentList '/add-driver','%s' "
-        "-Verb RunAs -Wait -PassThru; $p.ExitCode" % str(infp)
+def install_driver(inf: str | Path | None = None) -> tuple[bool, str]:
+    """드라이버는 **실행으로 설치하지 않는다** — 안내만 한다(pnputil 호출 제거).
+
+    이 도구는 시스템(커널)을 건드리지 않는다. Windows 10/11 은 Proxmark3(USB CDC)를 꽂으면
+    내장 usbser 로 자동 인식한다. 안 잡히면 대개 '충전 전용 케이블'이거나, 예전에 Zadig/WinUSB
+    드라이버를 깐 적이 있어 장치가 'Ports'에서 빠진 경우다(이 경우 장치관리자에서 장치 제거 +
+    '드라이버 소프트웨어 삭제' 후 다시 꽂으면 usbser 로 재인식된다).
+    """
+    guide = (
+        "이 도구는 드라이버를 자동 설치하지 않습니다(시스템 안정성). 포트가 안 잡히면:\n"
+        "  1) '데이터 전송용' USB 케이블인지 (충전 전용 불가) · 본체 USB 포트인지 확인\n"
+        "  2) 예전에 Zadig/WinUSB 를 깐 적 있으면: 장치관리자에서 Proxmark3 장치 → 제거 →\n"
+        "     '이 장치의 드라이버 소프트웨어를 삭제' 체크 → 뽑았다 다시 꽂기 (usbser 로 재인식)\n"
+        "  3) Win7 등: 장치관리자 → 드라이버 업데이트 → drivers\\proxmark3.inf 수동 지정"
     )
-    out = _ps_run(ps, timeout=120)
-    if out is None:
-        return (False, "PowerShell 을 실행하지 못했습니다.")
-    txt = (out.stdout or b"").decode("utf-8", "replace").strip()
-    err = (out.stderr or b"").decode("utf-8", "replace").strip()
-    code = txt.splitlines()[-1].strip() if txt else ""
-    if code in ("0", "3010", "259"):
-        return (True, "드라이버를 등록했습니다. **장치를 뽑았다 다시 꽂으면** COM 포트가 잡힙니다.")
-    if "canceled" in err.lower() or "취소" in err or code == "":
-        return (False, "취소되었거나 관리자 권한을 못 얻었습니다(UAC 에서 '예'). 보통은 케이블 문제가 더 흔합니다.")
-    return (False, "드라이버 등록 실패(코드 %s). 대개 '충전 전용 케이블'이 원인입니다. %s" % (code or "?", err[-200:]))
+    return (False, guide)
 
 
 def find_firmware_images(client: str) -> dict:
