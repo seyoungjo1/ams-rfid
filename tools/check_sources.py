@@ -1,9 +1,12 @@
 #!/usr/bin/env python3
-"""소스 무결성 가드 — CI 에서 돈다.
+"""Source integrity guard — runs in CI.
 
-사용자 PC 에서 pm3.py 가 '널 바이트'로 깨져 죽은 사고가 있었다. 그 종류의 손상을
-커밋 단계에서 잡는다: 모든 .py 가 (1) 널 바이트가 없고 (2) 유효한 UTF-8 이며
-(3) 파이썬으로 컴파일되는지 확인한다.
+A user's pm3.py once got corrupted with NUL bytes ('source code string cannot
+contain null bytes') and crashed on import. This catches that class of damage at
+commit time: every .py must (1) have no NUL bytes, (2) be valid UTF-8, and
+(3) compile.
+
+Output is ASCII-only on purpose so it prints fine on a Windows console (cp1252).
 """
 from __future__ import annotations
 
@@ -18,23 +21,23 @@ def main() -> int:
     for f in files:
         data = open(f, "rb").read()
         if b"\x00" in data:
-            bad.append("%s: 널 바이트 포함" % f)
+            bad.append("%s: contains NUL byte(s)" % f)
             continue
         try:
             text = data.decode("utf-8")
         except UnicodeDecodeError as e:
-            bad.append("%s: UTF-8 아님 (%s)" % (f, e))
+            bad.append("%s: not valid UTF-8 (%s)" % (f, e))
             continue
         try:
             compile(text, f, "exec")
         except SyntaxError as e:
-            bad.append("%s: 컴파일 실패 (%s)" % (f, e))
+            bad.append("%s: does not compile (%s)" % (f, e))
     if bad:
-        print("소스 무결성 실패:")
+        print("SOURCE INTEGRITY FAILED:")
         for b in bad:
-            print("  · " + b)
+            print("  - " + b)
         return 1
-    print("OK: %d개 .py 모두 널 바이트 없음 · 유효 UTF-8 · 컴파일 성공" % len(files))
+    print("OK: %d .py files: no NUL bytes, valid UTF-8, all compile" % len(files))
     return 0
 
 
