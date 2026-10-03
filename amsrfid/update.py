@@ -103,12 +103,35 @@ def list_paths(tree: dict[str, Any]) -> list[str]:
     return out
 
 
+def _blob_ok(path: str, data: bytes) -> bool:
+    """받은 .py 가 온전한지 — 널 바이트/인코딩 손상/빈 파일을 걸러낸다.
+
+    (사용자 PC 에서 pm3.py 가 널 바이트로 깨져 'source code string cannot contain null bytes'
+    로 죽은 사례가 있어, 깨진 걸 아예 안 쓰게 막는다.)
+    """
+    if path.endswith(".py"):
+        if not data or b"\x00" in data:
+            return False
+        try:
+            data.decode("utf-8")
+        except UnicodeDecodeError:
+            return False
+    return True
+
+
 def download(token: str, sha: str, progress: Any = None) -> dict[str, bytes]:
     tree = json.loads(_get("/repos/%s/git/trees/%s?recursive=1" % (REPO, sha), token))
     paths = list_paths(tree)
     blobs: dict[str, bytes] = {}
     for i, p in enumerate(paths, 1):
-        blobs[p] = _get("/repos/%s/contents/%s?ref=%s" % (REPO, quote(p), sha), token, raw=True)
+        data = _get("/repos/%s/contents/%s?ref=%s" % (REPO, quote(p), sha), token, raw=True)
+        if not _blob_ok(p, data):
+            data = _get("/repos/%s/contents/%s?ref=%s" % (REPO, quote(p), sha), token, raw=True)  # 한 번 재시도
+            if not _blob_ok(p, data):
+                raise UpdateError(
+                    "받은 파일이 손상됐습니다(널 바이트/인코딩): %s — 업데이트를 중단하고 기존 파일을 "
+                    "그대로 둡니다. 잠시 뒤 다시 시도하세요." % p)
+        blobs[p] = data
         if progress:
             progress(i, len(paths), p)
     return blobs
@@ -279,3 +302,11 @@ def run(check_only: bool = False, root: Path | None = None, echo: Any = print) -
         return 1
     echo("업데이트 완료 (v%s). 검은 창을 닫고 run.bat 을 다시 실행하세요." % there)
     return 0
+
+
+# 패키지가 깨졌을 때(예: pm3.py 널 바이트)도 스스로 복구할 수 있게 단독 실행을 지원한다.
+# 이 모듈은 amsrfid 내부 모듈을 import 하지 않으므로, 다른 파일이 손상돼도 돌아간다.
+#   python -m amsrfid.update        → 깨진 파일을 깨끗한 최신본으로 다시 받아 복구
+if __name__ == "__main__":
+    import sys as _sys
+    raise SystemExit(run(check_only=False))

@@ -33,8 +33,9 @@ set "AMSRFID_RUNNING_BAT=%~f0"
 rem --- ensure pyserial (read-only serial port enumeration; same lib Proxmark3GUI uses) ---
 %PY% -c "import serial.tools.list_ports" 2>nul || %PY% -m pip install -q pyserial 2>nul
 
-rem --- auto-update when token.txt is present ---
-%PY% -m amsrfid update
+rem --- auto-update when token.txt is present. Use the standalone module path so a broken
+rem     package file (e.g. a corrupted pm3.py) can still self-heal via re-download. ---
+%PY% -m amsrfid.update
 
 rem --- launch the local web UI ONLY. No driver install, no flashing, no drive scan at startup.
 rem     Anything that touches the system (driver/firmware) is a manual button inside the UI. ---
