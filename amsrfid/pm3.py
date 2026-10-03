@@ -36,6 +36,10 @@ class DeviceNotFound(Pm3Error):
     pass
 
 
+class FirmwareMismatch(Pm3Error):
+    pass
+
+
 # 흔한 설치 위치 — 윈도우(ProxSpace/릴리스)와 리눅스/맥을 함께 본다.
 _WIN_GLOBS = [
     r"C:\ProxSpace\pm3\proxmark3\client\proxmark3.exe",
@@ -627,6 +631,10 @@ class Pm3:
         # Never replay commands: a write can have completed before disconnection.
         result = self._run_subprocess(self._build_args(commands), timeout)
         if result.returncode != 0 or _looks_disconnected(result.text):
+            if "capabilities structure version" in result.text.lower():
+                raise FirmwareMismatch(
+                    "장치 펌웨어와 클라이언트의 통신 규격이 다릅니다. COM 포트 통신은 확인됐습니다.\n"
+                    "'Easy 펌웨어 복구'에서 같은 배포본으로 부트로더·펌웨어를 맞춰 주세요.\n%s" % result.text[-2000:])
             if "cannot communicate with the proxmark" in result.text.lower():
                 raise Pm3Error(
                     "포트 %s 는 열렸지만 장치 통신 검사에 실패했습니다. 클라이언트 설치는 완료된 상태입니다.\n"
@@ -645,6 +653,7 @@ class Pm3:
         if not port:
             raise DeviceNotFound("Proxmark3 포트를 찾지 못했습니다. amsrfid.toml 의 port 를 지정하거나 상태 확인을 실행하세요.")
         args.extend(["-p", port])
+        args.extend(self.extra_args)
         args.extend(extra)
         return self._run_subprocess(args, timeout)
 

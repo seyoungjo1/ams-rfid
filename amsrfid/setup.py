@@ -2,7 +2,7 @@
 
 Proxmark3GUI 처럼 **시스템을 건드리지 않는다** — 드라이버 자동설치(pnputil)·자동 펌웨어
 플래싱은 과거 시스템 오류(fault)를 일으켜 전부 제거했다. 여기서는 pyserial 로 포트를 보고,
-클라이언트를 찾고, 상태만 알려 준다. 드라이버·펌웨어는 사람이 직접(안내대로) 한다.
+클라이언트를 찾고, 상태만 알려 준다. 펌웨어 복구는 사용자가 명시적으로 시작할 때만 firmware 모듈에서 수행한다.
 """
 from __future__ import annotations
 
@@ -78,26 +78,11 @@ def prepare_device(cfg: Config, echo: Echo = print, *, debug: bool = False) -> P
 
 
 def flash_if_needed(cfg: Config, client: str, echo: Echo = print, force: bool = False) -> bool:
-    """펌웨어 플래싱 — **명시적으로 요청할 때만**(`amsrfid flash`). 자동 호출하지 않는다."""
-    pm3 = P.Pm3(client=client, port=cfg.port or None, workdir=cfg.out_path)
-    if not pm3.device_present():
-        echo("· 장치가 응답하지 않습니다(꽂힘/케이블 확인). 플래싱을 멈춥니다.")
-        return False
-    imgs = P.find_firmware_images(client)
-    if not imgs.get("fullimage"):
-        echo("· fullimage.elf 를 못 찾았습니다. pm3 셸에서 `pm3-flash-all` 로 올리세요.")
-        return False
-    echo("· 펌웨어를 플래싱합니다(fullimage) — 장치를 뽑지 마세요…")
-    res = pm3.run_raw(["--flash", "--image", imgs["fullimage"]], timeout=max(cfg.timeout, 300))
-    low = res.text.lower()
-    # pm3 의 한방 종료코드는 서브명령마다 믿을 게 못 되므로, 완료 배너로도 확인한다.
-    ok = (("have a nice day" in low) or ("done" in low) or ("wrote" in low) or ("success" in low)) \
-        and "fail" not in low and "error" not in low
-    if not ok:
-        echo("  → 플래싱이 안 끝났을 수 있습니다. 부트로더 모드(버튼 누른 채 꽂기)가 필요할 수 있어요.")
-        echo(res.text[-400:])
-        return False
-    echo("  → 플래싱 완료. 장치가 재부팅됩니다.")
+    """Compatibility entry point: explicit recovery uses only the verified bundle."""
+    if not force:
+        raise P.Pm3Error("펌웨어 복구는 명시적으로 시작해야 합니다.")
+    from .firmware import repair
+    repair(cfg, echo, confirmed=True)
     return True
 
 

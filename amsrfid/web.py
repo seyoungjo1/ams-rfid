@@ -22,7 +22,7 @@ from typing import Any, Callable
 
 from . import __version__, dump as D, update, workflow
 from .config import Config
-from .pm3 import Pm3, Pm3Error
+from .pm3 import Pm3, Pm3Error, FirmwareMismatch
 
 HERE = Path(__file__).resolve().parent
 UI_HTML = HERE / "ui.html"
@@ -40,6 +40,7 @@ class Job:
         self.running = True
         self.ok = False
         self.error = ""
+        self.error_code = ""
         self.result: dict[str, Any] = {}
         self._lock = threading.Lock()
 
@@ -61,6 +62,7 @@ class Job:
                 "running": self.running,
                 "ok": self.ok,
                 "error": self.error,
+                "error_code": self.error_code,
                 "result": self.result,
                 "total": len(self.lines),
                 "lines": self.lines[since:],
@@ -165,6 +167,7 @@ class App:
                 target(job)
             except Pm3Error as e:
                 job.error = str(e)
+                job.error_code = "firmware_mismatch" if isinstance(e, FirmwareMismatch) else ""
                 job.log("문제가 생겼습니다: %s" % e)
             except Exception as e:  # noqa: BLE001 - UI 로 전달하려고 폭넓게 잡는다
                 job.error = "%s: %s" % (e.__class__.__name__, e)
@@ -244,6 +247,17 @@ class App:
                 job.error = "업데이트가 완료되지 않았습니다. 로그를 확인하세요."
 
         return self._start("update", target)
+
+    def start_firmware(self, confirmed: bool = False) -> dict[str, Any]:
+        if not confirmed:
+            return {"ok": False, "error": "부트로더·펌웨어 변경 확인이 필요합니다."}
+        from . import firmware
+        def target(job: Job) -> None:
+            self._dev = {}
+            self.pending_write = None
+            job.result = firmware.repair(self.cfg, job.log, job.set_stage, confirmed=True)
+            self._dev = {"present": True, "com": job.result["port"], "connected": True}
+        return self._start("firmware", target)
 
     def start_connect(self, *, debug: bool = False) -> dict[str, Any]:
         from . import setup
@@ -354,6 +368,8 @@ def _make_handler(app: App):
                 return self._send_json(app.start_connect())
             if path == "/api/connect/debug":
                 return self._send_json(app.start_connect(debug=True))
+            if path == "/api/firmware/repair":
+                return self._send_json(app.start_firmware(self._body_json().get("confirmed") is True))
             if path == "/api/setup":
                 return self._send_json(app.start_setup())
             if path == "/api/clone":

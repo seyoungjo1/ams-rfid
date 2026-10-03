@@ -6,6 +6,7 @@ import tempfile
 sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
 from amsrfid import runtime
 from amsrfid.pm3 import Pm3
+from amsrfid.firmware import verified_images
 
 if __name__ == "__main__":
     if not runtime.supported_platform():
@@ -13,6 +14,7 @@ if __name__ == "__main__":
     with tempfile.TemporaryDirectory(prefix="ams-runtime-") as temp:
         root = Path(temp)
         client = runtime.install(root)
+        verified_images(client)
         pm3 = Pm3(client=client, workdir=root / "out")
         help_result = pm3._run_subprocess([client, "-h"], 30)
         assert help_result.returncode == 0, help_result.text

@@ -53,7 +53,8 @@ def build_parser() -> argparse.ArgumentParser:
     ps.add_argument("--flash", action="store_true", help="호환용 옵션 (setup 은 플래싱하지 않음)")
     ps.add_argument("--no-flash", action="store_true", help="펌웨어 플래싱을 건너뜀")
 
-    sub.add_parser("flash", help="펌웨어를 최신으로 플래싱(공식 --flash, fullimage)")
+    pf = sub.add_parser("flash", help="Easy 펌웨어 복구: 용량 확인 → 부트로더 → 펌웨어 → 연결 검증")
+    pf.add_argument("--yes", action="store_true", help="부트로더·펌웨어 변경에 동의하고 진행")
 
     sub.add_parser("diag", help="진단: 지금 도구가 보는 COM 포트·USB 장치·클라이언트를 전부 출력")
 
@@ -120,16 +121,14 @@ def cmd_setup(cfg: Config, flash: bool, no_flash: bool) -> int:
     return 0 if res.get("ready") else 1
 
 
-def cmd_flash(cfg: Config) -> int:
-    from . import setup
-    from .pm3 import find_client, DeviceNotFound
-    try:
-        client = find_client(cfg.pm3_path or None, deep=False)
-    except DeviceNotFound as e:
-        print(str(e))
-        return 1
-    ok = setup.flash_if_needed(cfg, client, print, force=True)
-    return 0 if ok else 1
+def cmd_flash(cfg: Config, confirmed: bool = False) -> int:
+    from . import firmware
+    if not confirmed:
+        print("Easy 부트로더·펌웨어를 변경합니다. 완료할 때까지 USB와 전원을 유지하세요.")
+        if input("복구를 시작하려면 YES 입력: ").strip() != "YES":
+            return 1
+    firmware.repair(cfg, confirmed=True)
+    return 0
 
 
 def cmd_diag(cfg: Config) -> int:
@@ -207,7 +206,7 @@ def main(argv: list[str] | None = None) -> int:
         if cmd == "setup":
             return cmd_setup(cfg, args.flash, args.no_flash)
         if cmd == "flash":
-            return cmd_flash(cfg)
+            return cmd_flash(cfg, args.yes)
         if cmd == "diag":
             return cmd_diag(cfg)
         if cmd == "connect":

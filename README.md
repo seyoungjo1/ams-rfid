@@ -2,7 +2,7 @@
 
 Proxmark3 **Easy**로 MIFARE Classic 1K / FM11RF08S 원본 카드를 읽고, 대상 카드에 쓴 뒤 되읽어 확인하는 로컬 도구입니다.
 
-## 0.3.3 — Windows에 아무것도 설치하지 않은 상태에서 시작
+## 0.4.0 — 자동 설치와 Easy 펌웨어 복구
 
 1. 이 저장소 폴더를 통째로 새 폴더에 압축 해제하고 Easy를 데이터 USB 케이블로 연결합니다.
 2. `run.bat`을 실행합니다. 공식 Python 런타임과 필요한 모듈을 폴더 내부에 자동 준비합니다.
@@ -40,11 +40,31 @@ Proxmark3 **Easy**로 MIFARE Classic 1K / FM11RF08S 원본 카드를 읽고, 대
 
 FM11RF08S 복구는 이 빌드의 [내장 `hf mf sen`](https://github.com/RfidResearchGroup/proxmark3/blob/da509461b734a61994f8e430e3151e9084bf9718/client/src/cmdhfmfsen.c)을 사용합니다. 배포 파일에 없는 Python 복구 스크립트를 호출하지 않습니다.
 
+## Capabilities structure version 오류: Easy 펌웨어 복구
+
+이 오류는 장치가 응답했지만 클라이언트와 장치 펌웨어의 통신 규격이 다르다는 뜻입니다. Windows 재설치나 클라이언트 재다운로드로 해결되지 않습니다.
+
+1. `run.bat`으로 0.4.0을 받은 뒤 프로그램을 닫고 다시 실행합니다.
+2. Easy 한 대만 연결하고 카드를 치웁니다.
+3. 화면의 **Easy 펌웨어 복구 → Easy 펌웨어 복구 시작**에서 변경 내용을 확인하고 시작합니다.
+4. 용량 확인 → 부트로더 갱신 → 용량 재확인 → 같은 빌드의 Easy 펌웨어 갱신 → 정상 연결·OS 버전 확인을 진행합니다.
+5. **복구·장치 버전 확인 완료** 후 원터치 시작으로 카드를 읽습니다.
+
+USB와 전원은 복구가 끝날 때까지 유지하세요. 부트로더 연결 실패 시 USB를 뽑고 Easy 버튼을 누른 채 연결합니다. 버튼을 놓아도 두 LED가 유지되면 놓으세요. 놓을 때 LED가 꺼지는 구형 부트로더는 쓰는 동안 누르고 있다가, 쓰기가 끝난 뒤 놓고 다시 연결해야 합니다. 본 펌웨어 쓰기는 완료됐지만 마지막 연결 확인만 실패했다면 **연결 확인**을 실행하세요. 펌웨어 쓰기를 반복할 필요는 없습니다.
+
+복구는 정상 `hw version` 연결을 선행 조건으로 요구하지 않습니다. 공식 flasher의 구형 통신 경로를 사용하며, `--force`를 사용하지 않습니다. 이미지 없는 `--flash`로 용량을 확인할 때도 장치가 부트로더로 전환·재시작되지만 이미지는 쓰지 않습니다. 클라이언트와 같은 검증된 배포본의 `bootrom.elf`, `fullimage.elf`를 개별 SHA-256으로 확인합니다.
+
+**동봉된 본 펌웨어는 Easy 512KB용입니다.** 256KB가 처음부터 확인되면 아무 이미지도 쓰지 않습니다. 아주 오래된 부트로더가 용량을 보고하지 못하면 공용 부트로더만 먼저 갱신하고 다시 확인합니다. 이후에도 512KB를 확인하지 못하면 본 펌웨어는 쓰지 않습니다. 256KB 장치는 별도 축소 빌드가 필요하며 이 버전은 해당 빌드를 제공하지 않습니다.
+
+전체 로그는 `out/firmware-repair.log`에 저장됩니다. 실패한 쓰기는 자동 재시도하지 않으며, 종료 코드·완료 문구·실패 문구를 함께 확인합니다. 콘솔에서는 `run.bat flash`를 사용할 수 있습니다.
+
+참고한 공식 절차: [RRG 부트로더 복구 안내](https://github.com/RfidResearchGroup/proxmark3/blob/master/doc/md/Installation_Instructions/Troubleshooting.md), [RRG 펌웨어 갱신·버전 일치](https://github.com/RfidResearchGroup/proxmark3/blob/master/doc/md/Use_of_Proxmark/0_Compilation-Instructions.md), [배포처 Easy 용량 및 순차 갱신 안내](https://www.proxmarkbuilds.org/). 실제 실행·성공 판정은 동봉 버전의 [flash.c](https://github.com/RfidResearchGroup/proxmark3/blob/da509461b734a61994f8e430e3151e9084bf9718/client/src/flash.c)와 [proxmark3.c](https://github.com/RfidResearchGroup/proxmark3/blob/da509461b734a61994f8e430e3151e9084bf9718/client/src/proxmark3.c)를 확인해 구현했습니다.
+
 ## 연결이 안 될 때
 
 **자동 준비·연결 확인**으로 카드 없이 장치 버전 응답을 확인할 수 있습니다. **진단 정보**는 포트와 Windows PnP 정보를 조회합니다. 다른 pm3 프로그램이 같은 COM 포트를 사용 중이면 종료하세요.
 
-장치 펌웨어와 클라이언트가 맞지 않으면 작업을 중단하고 로그에 표시합니다. 드라이버 설치나 장치 펌웨어 변경은 원터치 카드 작업에 포함되지 않습니다. Easy는 256KB/512KB 변형이 있으므로, 펌웨어 변경이 필요하면 장치 정보를 먼저 확인해야 합니다. 검은 화면 문제가 다시 발생하면 반복 실행하지 말고 해당 오류와 로그를 확인하세요.
+장치 펌웨어와 클라이언트가 맞지 않으면 카드 작업을 중단하고 **Easy 펌웨어 복구**를 안내합니다. 카드 작업과 펌웨어 복구는 별도로 시작합니다. 검은 화면 문제가 다시 발생하면 반복 실행하지 말고 해당 오류와 로그를 확인하세요.
 
 `cannot communicate with the Proxmark3`는 포트를 연 뒤 통신 검사에 실패했다는 뜻입니다. USB를 뽑고 Easy 버튼을 누르지 않은 상태로 다시 연결한 뒤 연결 확인을 한 번 실행하세요. 계속 실패하면 **통신 상세 점검**을 실행하고 `out/connection-debug.log`를 확인하세요. CLI에서는 `run.bat connect --debug`로 실행할 수 있습니다. 이 점검은 상세 출력을 켜고 `hw version`을 한 번 실행하며, 펌웨어를 쓰거나 자동 재시도하지 않습니다. 구형 펌웨어·부트로더 모드·USB 통신 문제는 추가 확인이 필요합니다. [공식 클라이언트의 통신 검사](https://github.com/RfidResearchGroup/proxmark3/blob/da509461b734a61994f8e430e3151e9084bf9718/client/src/proxmark3.c)를 기준으로 오류를 구분합니다.
 
@@ -74,7 +94,7 @@ python -m amsrfid version
 
 ## 업데이트와 테스트
 
-`token.txt`에 GitHub 토큰이 있으면 실행 시 `claude/lucid-hamilton-2c2r4r`에서 업데이트합니다. 실행 중인 배치 파일이 변경된 경우 안내된 `run_v033.bat`을 한 번 실행하면 새 실행기로 바뀝니다. 사용자 설정, 토큰, `.runtime`, 저장 덤프는 업데이트에서 보존합니다. 0.3.2는 0.3.1 이후의 전용 Python 경로 수정과 기존 pm3 개인 설정 격리까지 포함하므로, 이미 0.3.1을 받은 경우에도 자동 업데이트됩니다.
+`token.txt`에 GitHub 토큰이 있으면 실행 시 `claude/lucid-hamilton-2c2r4r`에서 업데이트합니다. 실행 중인 배치 파일이 변경된 경우 안내된 `run_v040.bat`을 한 번 실행하면 새 실행기로 바뀝니다. 사용자 설정, 토큰, `.runtime`, 저장 덤프는 업데이트에서 보존합니다. 0.3.2는 0.3.1 이후의 전용 Python 경로 수정과 기존 pm3 개인 설정 격리까지 포함하므로, 이미 0.3.1을 받은 경우에도 자동 업데이트됩니다.
 
 ```text
 python -m pip install pytest -r requirements.txt
